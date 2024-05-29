@@ -1,7 +1,6 @@
 import os
 import sys
 from io import BytesIO
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -11,15 +10,19 @@ import base64
 from docx import Document
 
 import base64
-def get_binary_file_downloader_html(bin_file, file_label='File', file_name='file'):
-    data = bin_file.getvalue()
-    b64 = base64.b64encode(data).decode()
-    href = f'<a href="data:application/octet-stream;base64,{b64}" download="{file_name}">{file_label}</a>'
+from datetime import datetime
+
+def get_binary_file_downloader_html(bin_file, file_label='File', customer_name='Customer', file_extension='.docx'):
+    file_name = f'{customer_name}_vm_results{file_extension}'
+    bin_str = bin_file.read()
+    href = f'<a href="data:application/octet-stream;base64,{base64.b64encode(bin_str).decode()}" download="{file_name}">{file_label}</a>'
     return href
 def generate_document_from_template(template_path, results, results_grade1, results_grade3, df_comparison,
-                                    third_party_licenses, notes):
+                                    third_party_licenses, notes, input_table,customer_name):
     doc = Document(template_path)  # Load the Word template
-
+    doc.add_heading('Customer Information', level=1)
+    doc.add_paragraph(f'Customer Name: {customer_name}')
+    doc.add_paragraph(f'Date: {datetime.now().strftime("%Y-%m-%d")}')
     # Function to add tables to the document
     def add_table(df, heading):
         doc.add_heading(heading, level=1)
@@ -32,10 +35,15 @@ def generate_document_from_template(template_path, results, results_grade1, resu
             for i, value in enumerate(row):
                 row_cells[i].text = str(value)
 
+        # Add input values as a table
+
+    add_table(input_table, 'Input Values:')
     # Adding tables to the document
     add_table(results, 'VM Recommendations:')
     add_table(df_comparison, 'Minimum vs. Recommended Resources:')
     add_table(third_party_licenses, 'Third Party Licenses:')
+
+
 
     # Add notes to the document
     doc.add_heading('Sizing Notes:', level=1)
@@ -443,11 +451,10 @@ def calculate_vm_requirements(num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, proj
         df_results.loc["RAID 1 (SSD)"] = ["-", "-", "-", total_storage]
         df_results.loc["RAID 5 (HDD)"] = ["-", "-", "-", round(image_storage_raid5_modality, 2) if breakdown_per_modality else total_image_storage_raid5]
         # Add here the following lines
-        df_results.loc["Templates "] = ["-", "-", "-", "templates"]
-        df_results.loc["Images "] = ["-", "-", "-", "images"]
+
     if num_studies <= 50000:
         sql_license = "SQL Express"
-    elif num_studies <= 200000:
+    elif num_studies <= 300000:
         sql_license = "SQL Standard"
     else:
         sql_license = "SQL Enterprise"
@@ -456,6 +463,7 @@ def calculate_vm_requirements(num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, proj
 
 
 def main():
+
     app_dir = os.path.dirname(sys.executable)
     logo_image = Image.open(os.path.join("assets", "logo.png"))
     # Display logo using columns for alignment
@@ -468,7 +476,7 @@ def main():
         st.write("")  # Empty column for spacing
 
     st.title("PaxeraHealth VM Calculator")
-
+    customer_name = st.text_input("Customer Name:")
     st.subheader("Input Method:")
     breakdown_per_modality = st.radio("Breakdown per Modality?", ["No", "Yes"])
 
@@ -640,7 +648,13 @@ def main():
             # Display results only if calculation is done
             if st.session_state.calculated:
                 # ... (display results tables, notes, requirements, etc.) ...
-
+                input_values = pd.DataFrame({
+                    "Input": ["PACS CCU", "RIS CCU", "Referring Physician CCU", "Project Grade",
+                              "Broker VM Required", "Contract Duration (years)", "Study Size (MB)",
+                              "Annual Growth Rate (%)"],
+                    "Value": [pacs_ccu, ris_ccu, ref_phys_ccu, project_grade, broker_required,
+                              contract_duration, study_size_mb, annual_growth_rate, ]
+                })
                 # Download Word document link
                 if not st.session_state.results.empty:
                     doc = generate_document_from_template(
@@ -650,12 +664,14 @@ def main():
                         results_grade3,
                         df_comparison,
                         third_party_licenses,
-                        notes
-                    )
+                        notes, input_values,
+                        customer_name=customer_name)
+
                     download_link = get_binary_file_downloader_html(
                         doc,
                         file_label="Download Word Document",
-                        file_name="vm_results.docx"
+                        customer_name=customer_name,  # Replace "CustomerName" with the actual customer name
+                        file_extension=".docx"
                     )
                     st.markdown(download_link, unsafe_allow_html=True)
 
