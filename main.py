@@ -530,7 +530,8 @@ def calculate_vm_requirements(num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, proj
 
 
 def main():
-    logo_image = Image.open("D:/Presales Documents/logo.png")  # Replace with the actual image file path
+    app_dir = os.path.dirname(sys.executable)
+    logo_image = Image.open(os.path.join("assets", "logo.png"))
 
     # Display logo using columns for alignment
     col1, col2, col3 = st.columns([1, 6, 1])  # Adjust column ratios for centering
