@@ -76,30 +76,13 @@ def generate_document_from_template(template_path, results, results_grade1, resu
     add_bullet_points(notes['technical_requirements'].replace('-', ''), 'Technical Requirements')
     add_bullet_points(notes['network_requirements'].replace('-', ''), 'Network Requirements (LAN)')
 
-    # Function to add section headings
-    def add_section_heading(heading):
-        paragraph = doc.add_paragraph()
-        run = paragraph.add_run(heading)
-        run.bold = True
-        run.font.size = Pt(12)
-
-    # Add High Availability or Server Design without bullet points
-    def add_server_specs(text):
-        for line in text.strip().split('\n'):
-            if line.startswith("**") and line.endswith("**:"):
-                heading = line[2:-2]
-                add_section_heading(heading)
-            else:
-                doc.add_paragraph(line.strip().replace('▪', '').replace('•', ''))
-
+    # Add High Availability or Server Design as bullet points
     design_heading = 'High Availability Design' if high_availability else 'Server Design'
-    add_section_heading(design_heading)
-    add_server_specs(server_specs)
+    add_bullet_points(server_specs.replace('-', ''), design_heading)
 
     # Add GPU Requirements if applicable
     if gpu_specs:
-        add_section_heading('GPU Requirements')
-        add_server_specs(gpu_specs)
+        add_bullet_points(gpu_specs.replace('-', ''), 'GPU Requirements')
 
     # Save the document to a buffer and return it
     buffer = BytesIO()
