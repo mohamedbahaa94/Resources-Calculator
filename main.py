@@ -11,6 +11,10 @@ from docx import Document
 
 import base64
 from datetime import datetime
+from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+
 
 def get_binary_file_downloader_html(bin_file, file_label='File', customer_name='Customer', file_extension='.docx'):
     file_name = f'{customer_name}_vm_results{file_extension}'
@@ -18,15 +22,21 @@ def get_binary_file_downloader_html(bin_file, file_label='File', customer_name='
     href = f'<a href="data:application/octet-stream;base64,{base64.b64encode(bin_str).decode()}" download="{file_name}">{file_label}</a>'
     return href
 def generate_document_from_template(template_path, results, results_grade1, results_grade3, df_comparison,
-                                    third_party_licenses, notes, input_table,customer_name):
+                                    third_party_licenses, notes, input_table, customer_name, high_availability, server_specs, gpu_specs):
     doc = Document(template_path)  # Load the Word template
-    doc.add_heading('Customer Information', level=1)
+
+    # Add a title with Customer Name centered
+    title = doc.add_heading(f'{customer_name} HW Recommendation', level=1)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    doc.add_heading('Customer Information', level=2)
     doc.add_paragraph(f'Customer Name: {customer_name}')
     doc.add_paragraph(f'Date: {datetime.now().strftime("%Y-%m-%d")}')
-    # Function to add tables to the document
-    def add_table(df, heading):
-        doc.add_heading(heading, level=1)
-        table = doc.add_table(rows=1, cols=len(df.columns))
+
+    # Function to add tables to the document with custom styles
+    def add_table(df, heading, style_name):
+        doc.add_heading(heading, level=2)
+        table = doc.add_table(rows=1, cols=len(df.columns), style=style_name)
         hdr_cells = table.rows[0].cells
         for i, col_name in enumerate(df.columns):
             hdr_cells[i].text = col_name
@@ -35,23 +45,61 @@ def generate_document_from_template(template_path, results, results_grade1, resu
             for i, value in enumerate(row):
                 row_cells[i].text = str(value)
 
-        # Add input values as a table
+    # Modify input_table for customer load or technical inputs
+    input_table = input_table[~input_table['Input'].isin(['Project Grade'])]
+    input_table['Value'] = input_table['Value'].replace({True: 'Required', False: 'Not Required'})
 
-    add_table(input_table, 'Input Values:')
+    # Add modified input values as a table
+    add_table(input_table, 'Customer Load / Technical Inputs', 'CustomTableStyle')
+
     # Adding tables to the document
-    add_table(results, 'VM Recommendations:')
-    add_table(df_comparison, 'Minimum vs. Recommended Resources:')
-    add_table(third_party_licenses, 'Third Party Licenses:')
+    add_table(results, 'VM Recommendations', 'CustomTableStyle')
+    add_table(df_comparison, 'Minimum vs. Recommended Resources', 'CustomTableStyle')
+    add_table(third_party_licenses, 'Third Party Licenses', 'CustomTableStyle')
 
+    # Function to add bullet points
+    def add_bullet_points(text, heading):
+        doc.add_heading(heading, level=2)
+        for line in text.strip().split('\n'):
+            if line.strip():
+                paragraph = doc.add_paragraph(line.strip())
+                p = paragraph._element
+                pPr = p.get_or_add_pPr()
+                numPr = OxmlElement('w:numPr')
+                numId = OxmlElement('w:numId')
+                numId.set(qn('w:val'), '1')
+                numPr.append(numId)
+                pPr.append(numPr)
 
+    # Add notes as bullet points
+    add_bullet_points(notes['sizing_notes'].replace('-', ''), 'Sizing Notes')
+    add_bullet_points(notes['technical_requirements'].replace('-', ''), 'Technical Requirements')
+    add_bullet_points(notes['network_requirements'].replace('-', ''), 'Network Requirements (LAN)')
 
-    # Add notes to the document
-    doc.add_heading('Sizing Notes:', level=1)
-    doc.add_paragraph(notes['sizing_notes'])
-    doc.add_heading('Technical Requirements:', level=1)
-    doc.add_paragraph(notes['technical_requirements'])
-    doc.add_heading('Network Requirements (LAN):', level=1)
-    doc.add_paragraph(notes['network_requirements'])
+    # Function to add section headings
+    def add_section_heading(heading):
+        paragraph = doc.add_paragraph()
+        run = paragraph.add_run(heading)
+        run.bold = True
+        run.font.size = Pt(12)
+
+    # Add High Availability or Server Design without bullet points
+    def add_server_specs(text):
+        for line in text.strip().split('\n'):
+            if line.startswith("**") and line.endswith("**:"):
+                heading = line[2:-2]
+                add_section_heading(heading)
+            else:
+                doc.add_paragraph(line.strip().replace('▪', '').replace('•', ''))
+
+    design_heading = 'High Availability Design' if high_availability else 'Server Design'
+    add_section_heading(design_heading)
+    add_server_specs(server_specs)
+
+    # Add GPU Requirements if applicable
+    if gpu_specs:
+        add_section_heading('GPU Requirements')
+        add_server_specs(gpu_specs)
 
     # Save the document to a buffer and return it
     buffer = BytesIO()
@@ -281,6 +329,7 @@ def calculate_paxera_pacs_resources(num_studies):
         return vm_configs
 def calculate_vm_requirements(num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, project_grade, broker_required,
                               contract_duration, study_size_mb, annual_growth_rate, breakdown_per_modality=False,
+                              aidocker_included=False, ark_included=False,
                               **modality_cases):
     vm_specs = {
         "PaxeraUltima": {"vcores": 8, "base_ram": 8, "storage_gb": 150},
@@ -308,7 +357,8 @@ def calculate_vm_requirements(num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, proj
 
         # Calculate RAID 5 storage based on modality breakdown
         image_storage_raid5_modality = sum(
-            modality_cases[modality] * modality_sizes.get(modality, 0) * contract_duration for modality in modality_cases
+            modality_cases[modality] * modality_sizes.get(modality, 0) * contract_duration for modality in
+            modality_cases
         )
     else:
         total_cases = num_studies
@@ -317,7 +367,6 @@ def calculate_vm_requirements(num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, proj
         # Calculate RAID 5 storage based on total studies
         image_storage_raid5_modality = num_studies * average_study_size * contract_duration * (
                 1 + annual_growth_rate / 100)
-
 
     vm_requirements = {}
     vm_config_lists = {
@@ -335,7 +384,6 @@ def calculate_vm_requirements(num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, proj
                 "RAM (GB)": ram_gb,
                 "Storage (GB)": 150,  # Adjust if needed for different VM types
             }
-
 
     # Assign DBServer specs to match PaxeraPACS
     dbserver_vm_configs = calculate_dbserver_resources(num_studies)
@@ -360,7 +408,7 @@ def calculate_vm_requirements(num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, proj
             "Storage (GB)": 150,  # Assuming 150GB storage for each PaxeraPACS VM
         }
     # Calculate other VM specifications (EXCLUDING PaxeraUltima)
-    for vm_type in [ "PaxeraBroker"]:
+    for vm_type in ["PaxeraBroker"]:
         if vms_needed.get(vm_type, 0) > 0:
             vm_specs_combined = calculate_vm_specifications(vm_type, vms_needed[vm_type], pacs_ccu, ris_ccu,
                                                             ref_phys_ccu, project_grade)
@@ -397,20 +445,20 @@ def calculate_vm_requirements(num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, proj
                 del vm_requirements["PaxeraBroker01"]
 
     elif project_grade == 2:
-                # Project Grade 2 adjustments (combine DBServer and PaxeraBroker ONLY)
-                if "DBServer01" in vm_requirements and "PaxeraBroker01" in vm_requirements:
-                    combined_vm = {
-                        "VM Type": "DBServer/PaxeraBroker",
-                        "vCores": min(12, 2 * round((vm_requirements["DBServer01"]["vCores"] +
-                                                     vm_requirements["PaxeraBroker01"]["vCores"]) / 1.5 / 2)),
-                        "RAM (GB)": min(64, 2 * round((vm_requirements["DBServer01"]["RAM (GB)"] +
-                                                       vm_requirements["PaxeraBroker01"]["RAM (GB)"]) / 1.5 / 2)),
-                        "Storage (GB)": vm_requirements["DBServer01"]["Storage (GB)"] +
-                                        vm_requirements["PaxeraBroker01"]["Storage (GB)"]
-                    }
-                    vm_requirements["DBServer01"] = combined_vm
-                    del vm_requirements["PaxeraBroker01"]
-        # Project Grade 3: Increase resources for each VM except PaxeraPACS
+        # Project Grade 2 adjustments (combine DBServer and PaxeraBroker ONLY)
+        if "DBServer01" in vm_requirements and "PaxeraBroker01" in vm_requirements:
+            combined_vm = {
+                "VM Type": "DBServer/PaxeraBroker",
+                "vCores": min(12, 2 * round((vm_requirements["DBServer01"]["vCores"] +
+                                             vm_requirements["PaxeraBroker01"]["vCores"]) / 1.5 / 2)),
+                "RAM (GB)": min(64, 2 * round((vm_requirements["DBServer01"]["RAM (GB)"] +
+                                               vm_requirements["PaxeraBroker01"]["RAM (GB)"]) / 1.5 / 2)),
+                "Storage (GB)": vm_requirements["DBServer01"]["Storage (GB)"] +
+                                vm_requirements["PaxeraBroker01"]["Storage (GB)"]
+            }
+            vm_requirements["DBServer01"] = combined_vm
+            del vm_requirements["PaxeraBroker01"]
+    # Project Grade 3: Increase resources for each VM except PaxeraPACS
     elif project_grade == 3:
         # Project Grade 3 adjustments: NO COMBINATIONS
         for vm_name, specs in vm_requirements.items():
@@ -432,7 +480,8 @@ def calculate_vm_requirements(num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, proj
             del vm_requirements["DBServer/PaxeraBroker"]  # Remove combined VM
 
     else:
-        raise ValueError("Invalid project grade. Please choose 1, 2, or 3.")        # Combine DBServer and PaxeraBroker if necessary
+        raise ValueError(
+            "Invalid project grade. Please choose 1, 2, or 3.")  # Combine DBServer and PaxeraBroker if necessary
 
     df_results = pd.DataFrame()
     total_image_storage_raid5 = 0
@@ -447,25 +496,59 @@ def calculate_vm_requirements(num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, proj
 
     if vm_requirements:
         df_results = pd.DataFrame.from_dict(vm_requirements, orient='index')
+        if aidocker_included:
+            vm_requirements["AISegmentationDocker01"] = {
+                "VM Type": "AI Segmentation Docker",
+                "vCores": 12,
+                "RAM (GB)": 32,
+                "Storage (GB)": 300
+            }
+            total_vcpu += 12
+            total_ram += 32
+            total_storage += 300
+        if ark_included:
+            # Add two AI Segmentation Docker VMs
+            for i in range(2):
+                vm_name = f"AISegmentationDocker0{i + 1}"
+                vm_requirements[vm_name] = {
+                    "VM Type": "AI Segmentation Docker",
+                    "vCores": 12,
+                    "RAM (GB)": 32,
+                    "Storage (GB)": 300
+                }
+
+            # Add AI ARK LAB VM
+            vm_requirements["AIARKLAB01"] = {
+                "VM Type": "AI ARK LAB",
+                "vCores": 12,
+                "RAM (GB)": 32,
+                "Storage (GB)": 300
+            }
+
+            # Add resources to totals
+            total_vcpu += 36  # 12 vCores * 3 VMs
+            total_ram += 96  # 32 GB RAM * 3 VMs
+            total_storage += 900  # 300 GB Storage * 3 VMs        # --- Update DataFrame ---
+        df_results = pd.DataFrame.from_dict(vm_requirements, orient='index')
+
         df_results.loc["Total"] = ["-", total_vcpu, total_ram, total_storage]
         df_results.loc["RAID 1 (SSD)"] = ["-", "-", "-", total_storage]
-        df_results.loc["RAID 5 (HDD)"] = ["-", "-", "-", round(image_storage_raid5_modality, 2) if breakdown_per_modality else total_image_storage_raid5]
-        # Add here the following lines
+        df_results.loc["RAID 5 (HDD)"] = ["-", "-", "-", round(image_storage_raid5_modality,
+                                                               2) if breakdown_per_modality else total_image_storage_raid5]
 
     if num_studies <= 50000:
         sql_license = "SQL Express"
-    elif num_studies <= 300000:
+    elif num_studies <= 200000:
         sql_license = "SQL Standard"
     else:
         sql_license = "SQL Enterprise"
 
-    return df_results, sql_license, image_storage_raid5_modality
+    return df_results, sql_license, image_storage_raid5_modality, total_vcpu, total_ram, total_image_storage_raid5
 
 
 def main():
+    logo_image = Image.open("D:/Presales Documents/logo.png")  # Replace with the actual image file path
 
-    app_dir = os.path.dirname(sys.executable)
-    logo_image = Image.open(os.path.join("assets", "logo.png"))
     # Display logo using columns for alignment
     col1, col2, col3 = st.columns([1, 6, 1])  # Adjust column ratios for centering
     with col1:
@@ -477,6 +560,7 @@ def main():
 
     st.title("PaxeraHealth VM Calculator")
     customer_name = st.text_input("Customer Name:")
+
     st.subheader("Input Method:")
     breakdown_per_modality = st.radio("Breakdown per Modality?", ["No", "Yes"])
 
@@ -496,23 +580,28 @@ def main():
         }
         num_studies = sum(modality_cases.values())
 
-    ccu_values = [0,2, 4, 8, 16, 24, 32, 64, 128, 256, 512]
-
-    pacs_ccu = st.selectbox("PACS CCU:", ccu_values, index=ccu_values.index(8))
-    ris_ccu = st.selectbox("RIS CCU (enter 0 if no RIS):", [0] + ccu_values, index=ccu_values.index(8) + 1)
-    ref_phys_ccu = st.selectbox("Referring Physician CCU (enter 0 if none):", [0] + ccu_values,
-                                index=ccu_values.index(0) + 1)
+    pacs_ccu = st.number_input("PACS CCU:", min_value=0, value=8)
+    ris_ccu = st.number_input("RIS CCU (enter 0 if no RIS):", min_value=0, value=8)
+    ref_phys_ccu = st.number_input("Referring Physician CCU (enter 0 if none):", min_value=0, value=8)
     project_grade = st.selectbox("Project Grade:", [1, 2, 3])
     broker_required = st.checkbox("Broker VM Required (check if explicitly requested)", value=False)
     contract_duration = st.number_input("Contract Duration (years):", min_value=1, value=3)
     study_size_mb = st.number_input("Study Size (MB):", min_value=0, value=120)
     annual_growth_rate = st.number_input("Annual Growth Rate (%):", min_value=0.0, value=10.0, format="%f")
+    aidocker_included = st.checkbox("Include U9th Integrated AI modules(Auto Segmentation , Spine Labeling, etc.)",
+                                    value=False)
+    ark_included = st.checkbox("Include ARKAI", value=False)
+    high_availability = st.checkbox("High Availability HW Design Required", value=False)
+
     calculate = st.button("Calculate")
 
     if calculate:
-        results, sql_license, image_storage_raid5_modality = calculate_vm_requirements(
+
+        results, sql_license, image_storage_raid5_modality, total_vcpu, total_ram, total_storage = calculate_vm_requirements(
             num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, project_grade, broker_required, contract_duration,
-            study_size_mb, annual_growth_rate, breakdown_per_modality == "Yes", **modality_cases
+            study_size_mb, annual_growth_rate,   # Pass directly
+            aidocker_included=aidocker_included, ark_included=ark_included,
+            **modality_cases  # Pass as keyword arguments
         )
 
         if not results.empty:
@@ -522,8 +611,15 @@ def main():
 
             # Update "Other Software" for DBServer and DB/Broker
             for index in results.index:
-                if "DBServer"  in index:
+                if "DBServer" in index:
                     results.at[index, "Other Software"] = sql_license
+                if "AISegmentationDocker" in index:  # Check for any AI Segmentation Docker VM
+                    results.at[index, "Operating System"] = "Ubuntu 20.4"
+                    results.at[
+                        index, "Other Software"] = "Nvidia Driver version 450.80.02 or higher\nNvidia driver to support CUDA version 11.4 or higher"
+                if "AIARKLAB01" in index:
+                    results.at[index, "Operating System"] = "Ubuntu 20.4"
+                    results.at[index, "Other Software"] = "RTX 4080 / RTX 4090 Video Cards"
 
             # Remove "Operating System" for the last three rows
             last_three_indices = results.tail(3).index
@@ -535,17 +631,17 @@ def main():
 
             if breakdown_per_modality == "Yes":
                 st.text(f"RAID 5 Storage (Modality breakdown): {round(image_storage_raid5_modality, 2)} GB")
-            results_grade1, _, _ = calculate_vm_requirements(num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, 1,
-                                                             broker_required, contract_duration,
-                                                             study_size_mb, annual_growth_rate,
-                                                             breakdown_per_modality == "Yes", **modality_cases)
-
+            results_grade1, _, _, total_vcpu_grade1, total_ram_grade1, total_storage_grade1 = calculate_vm_requirements(
+                num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, 1, broker_required, contract_duration,
+                study_size_mb, annual_growth_rate, breakdown_per_modality, aidocker_included=aidocker_included,
+                ark_included=ark_included, **modality_cases
+            )
             # Calculate Grade 3 requirements
-            results_grade3, _, _ = calculate_vm_requirements(num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, 3,
-                                                             broker_required, contract_duration,
-                                                             study_size_mb, annual_growth_rate,
-                                                             breakdown_per_modality == "Yes", **modality_cases)
-
+            results_grade3, _, _, total_vcpu_grade3, total_ram_grade3, total_storage_grade3 = calculate_vm_requirements(
+                num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, 3, broker_required, contract_duration,
+                study_size_mb, annual_growth_rate, breakdown_per_modality, aidocker_included=aidocker_included,
+                ark_included=ark_included, **modality_cases
+            )
             # Summarize total vCores and RAM
             total_vcpu_grade1 = results_grade1.loc["Total", "vCores"]
             total_ram_grade1 = results_grade1.loc["Total", "RAM (GB)"]
@@ -571,6 +667,47 @@ def main():
             st.subheader("Minimum vs. Recommended Resources:")  # New table title
             st.dataframe(df_comparison.style.set_properties(subset=["Specification"],
                                                             **{'width': '300px'}))  # Show the comparison table
+            # High Availability Design
+            if high_availability:
+                section_header = "High Availability Design:"
+                total_vcpu = round(total_vcpu * 1.5 // 2)
+                total_vcpu = round(total_vcpu / 2) * 2
+                total_core = total_vcpu // 2
+                total_core = round(total_core / 2) * 2
+
+                original_vcpu = results.loc["Total", "vCores"]  # Store the original total vCPU
+                total_ram = round(total_ram * 1.5)
+                nas_backup_storage = round(1.2 * total_storage, 2)
+                server_specs = f"""
+                    **Server 1:**
+                      - CPU: {total_core} Cores({total_vcpu} threads) 
+                      - RAM: {total_ram // 2} GB
+
+                    **Server 2:**
+                      - CPU: {total_core}  Cores ({total_vcpu} threads)
+                      - RAM: {total_ram // 2} GB
+
+                    **Shared DAS/SAN Storage:**
+                      - RAID 1 (SSD): {results.loc["RAID 1 (SSD)", "Storage (GB)"]:.2f} GB
+                      - RAID 5 (HDD): {total_storage:.2f} GB
+
+                    **NAS Backup Storage:**
+                      - RAID 5 (HDD): {nas_backup_storage:.2f} GB
+                    """
+            else:
+                section_header = "Server Design:"
+                total_vcpu = results.loc["Total", "vCores"] // 2  # Divide total vCPU by 2
+                total_ram = results.loc["Total", "RAM (GB)"]
+                server_specs = f"""
+
+                      - CPU: {total_vcpu} Cores ({results.loc["Total", "vCores"]} threads)
+                      - Total RAM: {total_ram} GB
+                      - Server Built-in Storage:  RAID 1 (SSD): {results.loc["RAID 1 (SSD)", "Storage (GB)"]:.2f} GB   , RAID 5 (HDD): {total_storage:.2f} GB
+                    """
+
+            # Display the appropriate design
+            st.subheader(section_header)
+            st.markdown(server_specs)
 
             # Third Party Licenses Table
             windows_count = results["Operating System"].value_counts().get("Windows Server 2019 or Higher", 0)
@@ -602,7 +739,29 @@ def main():
             - SSD recommended for the data drive of the Database Server.
             - It's recommended to have SSD storage for the short Term Storage (STS) that keep last 6 month of data for higher performance in data access.
             """)
+            gpu_specs = ""
+            if aidocker_included:
 
+                st.subheader("GPU Requirements:")
+                gpu_specs= """
+
+                    - GPUs: 1
+                    - GPU Memory: 32 GB
+                    - Nvidia Tesla V100 or equivalent RTX (Preferred)
+                    - Nvidia Driver version 450.80.02 or higher
+                    - Nvidia driver to support CUDA version 11.4 or higher
+                    """
+            elif ark_included:
+                st.subheader("GPU Requirements:")
+                gpu_specs= """
+                - GPUs: 3
+                - GPU Memory: 32 GB
+                -  2* Nvidia Tesla V100 or equivalent RTX (Preferred)(For Segmentation  Dockers)
+                - Nvidia Driver version 450.80.02 or higher
+                - Nvidia driver to support CUDA version 11.4 or higher
+                - RTX 4080 / RTX 4090 Video Cards ( For ARK LAB)
+                    """
+            st.markdown(gpu_specs)
             st.subheader("Technical Requirements:")
             st.markdown("""
             - Provide remote access to the VMs (all VMs) for SW installation and configurations.
@@ -634,8 +793,6 @@ def main():
                         - Latency less than 1ms.
                         """
             }
-            if "calculated" not in st.session_state:
-                st.session_state.calculated = False
 
             if calculate:
                 # Calculate results
@@ -665,7 +822,12 @@ def main():
                         df_comparison,
                         third_party_licenses,
                         notes, input_values,
-                        customer_name=customer_name)
+                        customer_name=customer_name,
+                        high_availability=high_availability,
+                        server_specs=server_specs,
+                        gpu_specs=gpu_specs
+                    )
+
 
                     download_link = get_binary_file_downloader_html(
                         doc,
