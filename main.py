@@ -9,6 +9,7 @@ from vm_calculations import calculate_vm_requirements, modality_sizes
 
 logging.basicConfig(level=logging.INFO)
 
+
 def add_server(servers, remaining_threads, remaining_ram, max_threads, max_ram):
     if remaining_threads == 0 or remaining_ram == 0:
         return remaining_threads, remaining_ram
@@ -27,7 +28,7 @@ def add_server(servers, remaining_threads, remaining_ram, max_threads, max_ram):
         total_cores = cores_per_processor * 2
         total_threads = total_cores * 2
     else:
-        if threads_to_allocate > 20 :
+        if threads_to_allocate > 20:
             processors_to_allocate = 'Dual'
             cores_per_processor = min((threads_to_allocate // 4), 64)
             total_cores = cores_per_processor * 2
@@ -47,22 +48,26 @@ def add_server(servers, remaining_threads, remaining_ram, max_threads, max_ram):
         "RAM": ram_to_allocate
     })
 
-    logging.info(f"Allocated Server: Processors={processors_to_allocate}, Total Cores={total_cores}, Total Threads={total_threads}, RAM={ram_to_allocate} GB")
-    print(f"Allocated Server: Processors={processors_to_allocate}, Total Cores={total_cores}, Total Threads={total_threads}, RAM={ram_to_allocate} GB")
+    logging.info(
+        f"Allocated Server: Processors={processors_to_allocate}, Total Cores={total_cores}, Total Threads={total_threads}, RAM={ram_to_allocate} GB")
+    print(
+        f"Allocated Server: Processors={processors_to_allocate}, Total Cores={total_cores}, Total Threads={total_threads}, RAM={ram_to_allocate} GB")
 
     return remaining_threads - total_threads, remaining_ram - ram_to_allocate
+
 
 def format_server_specs(servers):
     server_specs = ""
     for i, server in enumerate(servers):
         server_specs += f"""
-        **Server {i+1}:**
+        **Server {i + 1}:**
           - Processors: {server['Processors']}
           - Total CPU: {server['Total Cores']} Cores / {server['Total Threads']} Threads
           - Per Processor: {server['Cores per Processor']} Cores / {server['Threads per Processor']} Threads
           - RAM: {server['RAM']} GB
         """
     return server_specs
+
 
 def calculate_raid5_disks(usable_storage_tb):
     standard_disk_sizes_tb = [20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
@@ -73,8 +78,10 @@ def calculate_raid5_disks(usable_storage_tb):
             return total_disks, disk_size
     return None, None
 
+
 def round_to_nearest_divisible_by_two(value):
     return round(value / 2) * 2
+
 
 def main():
     app_dir = os.path.dirname(os.path.abspath(__file__))
@@ -88,7 +95,7 @@ def main():
     with col3:
         st.write("")
 
-    st.title("PaxeraHealth VM Calculator")
+    st.title("PaxeraHealth Sizing Calculator")
     customer_name = st.text_input("Customer Name:")
 
     with st.expander("Contract and Study Details"):
@@ -223,32 +230,43 @@ def main():
 
     calculate = st.button("Calculate")
 
+    # Validation check
     if calculate:
-        logging.info("Starting VM Requirements Calculation")
-        start_calc_time = time.time()
-        results, sql_license, first_year_storage_raid5, total_image_storage_raid5, total_vcpu, total_ram, total_storage = calculate_vm_requirements(
-            num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, project_grade, broker_required, broker_level, num_machines,
-            contract_duration, study_size_mb, annual_growth_rate, aidocker_included=aidocker_included,
-            ark_included=ark_included, ref_phys_external_access=ref_phys_external_access,
-            training_vm_included=training_vm_included,high_availability=high_availability, **modality_cases
-        )
-        logging.info(f"VM Requirements Calculation completed in {time.time() - start_calc_time:.2f} seconds")
+        if (
+                num_studies == 0 and pacs_ccu == 0 and ris_ccu == 0 and ref_phys_ccu == 0
+                and not pacs_enabled and not ris_enabled and not ref_phys_enabled
+                and not broker_required and not aidocker_included and not ark_included
+                and not high_availability and not training_vm_included
+        ):
+            st.error("Please enter values for the number of studies, CCUs, or select additional features.")
+        else:
+            logging.info("Starting VM Requirements Calculation")
+            start_calc_time = time.time()
+            results, sql_license, first_year_storage_raid5, total_image_storage_raid5, total_vcpu, total_ram, total_storage = calculate_vm_requirements(
+                num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, project_grade, broker_required, broker_level,
+                num_machines,
+                contract_duration, study_size_mb, annual_growth_rate, aidocker_included=aidocker_included,
+                ark_included=ark_included, ref_phys_external_access=ref_phys_external_access,
+                training_vm_included=training_vm_included, high_availability=high_availability, **modality_cases
+            )
+            logging.info(f"VM Requirements Calculation completed in {time.time() - start_calc_time:.2f} seconds")
 
-        if not results.empty:
-            results["Operating System"] = "Windows Server 2019 or Higher"
-            results["Other Software"] = ""
+            if not results.empty:
+                results["Operating System"] = "Windows Server 2019 or Higher"
+                results["Other Software"] = ""
 
-            for index in results.index:
-                if "TestVM" in index:
-                    results.at[index, "Other Software"] = sql_license
-                if "DBServer" in index:
-                    results.at[index, "Other Software"] = sql_license
-                if "AISegmentationDocker" in index:
-                    results.at[index, "Operating System"] = "Ubuntu 20.4"
-                    results.at[index, "Other Software"] = "Nvidia Driver version 450.80.02 or higher\nNvidia driver to support CUDA version 11.4 or higher"
-                if "AIARKLAB01" in index:
-                    results.at[index, "Operating System"] = "Ubuntu 20.4"
-                    results.at[index, "Other Software"] = "RTX 4080 / RTX 4090 Video Cards"
+                for index in results.index:
+                    if "TestVM" in index:
+                        results.at[index, "Other Software"] = sql_license
+                    if "DBServer" in index:
+                        results.at[index, "Other Software"] = sql_license
+                    if "AISegmentationDocker" in index:
+                        results.at[index, "Operating System"] = "Ubuntu 20.4"
+                        results.at[
+                            index, "Other Software"] = "Nvidia Driver version 450.80.02 or higher\nNvidia driver to support CUDA version 11.4 or higher"
+                    if "AIARKLAB01" in index:
+                        results.at[index, "Operating System"] = "Ubuntu 20.4"
+                        results.at[index, "Other Software"] = "RTX 4080 / RTX 4090 Video Cards"
 
             # Add Test Environment VM
             if training_vm_included:
