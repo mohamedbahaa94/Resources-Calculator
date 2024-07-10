@@ -18,7 +18,7 @@ def get_binary_file_downloader_html(bin_file, file_label='File', customer_name='
 def generate_document_from_template(template_path, results, results_grade1, results_grade3, df_comparison,
                                     third_party_licenses, notes, input_table, customer_name, high_availability,
                                     server_specs, gpu_specs,
-                                    first_year_storage_raid5, total_image_storage_raid5, num_studies):
+                                    first_year_storage_raid5, total_image_storage_raid5, num_studies, storage_title,shared_storage):
     doc = Document(template_path)
 
     title = doc.add_heading(f'{customer_name} HW Recommendation', level=1)
@@ -80,9 +80,30 @@ def generate_document_from_template(template_path, results, results_grade1, resu
     add_bullet_points(notes['technical_requirements'].replace('-', ''), 'Technical Requirements')
     add_bullet_points(notes['network_requirements'].replace('-', ''), 'Network Requirements (LAN)')
 
+    def add_bullet_points_with_heading(heading, text):
+        doc.add_heading(heading, level=2)
+        for line in text.strip().split('\n'):
+            if line.strip():
+                if line.strip().startswith('*'):
+                    # Add as a bold line without bullet points
+                    line = line.strip().lstrip('*').strip()
+                    paragraph = doc.add_paragraph()
+                    run = paragraph.add_run(line)
+                    run.bold = True
+                else:
+                    # Add as a bullet point
+                    paragraph = doc.add_paragraph(line.strip())
+                    p = paragraph._element
+                    pPr = p.get_or_add_pPr()
+                    numPr = OxmlElement('w:numPr')
+                    numId = OxmlElement('w:numId')
+                    numId.set(qn('w:val'), '1')
+                    numPr.append(numId)
+                    pPr.append(numPr)
     design_heading = 'High Availability Design' if high_availability else 'Server Design'
-    doc.add_heading(design_heading, level=2)
-    doc.add_paragraph(server_specs)
+    add_bullet_points_with_heading(design_heading, server_specs)
+
+    add_bullet_points_with_heading('Storage Design', shared_storage)
 
     if gpu_specs:
         doc.add_heading('GPU Requirements', level=2)

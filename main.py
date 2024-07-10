@@ -70,7 +70,7 @@ def format_server_specs(servers):
 
 
 def calculate_raid5_disks(usable_storage_tb):
-    standard_disk_sizes_tb = [20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
+    standard_disk_sizes_tb = [20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2.4, 1.2]
     for disk_size in standard_disk_sizes_tb:
         total_disks = (usable_storage_tb / disk_size) + 1
         if total_disks >= 3 and total_disks.is_integer():
@@ -397,13 +397,20 @@ def main():
             usable_storage_tb = round_to_nearest_divisible_by_two(total_image_storage_raid5 / 1024)
             total_disks, disk_size = calculate_raid5_disks(usable_storage_tb)
             hdd_storage_final = f"{total_disks}x {disk_size} TB (RAID 5)"
-
-            shared_storage = f"""
-            **Shared DAS/SAN Storage:**
-              - SSD: 2x {raid_1_storage / 1024:.2f} TB (RAID 1)
-              - HDD: {hdd_storage_final}
-            """
-            st.markdown(shared_storage)
+            if len(servers) & ~ high_availability == 1:
+                shared_storage = f"""
+                            **Server Built-in Storage:**
+                              - SSD: 2x {raid_1_storage / 1024:.2f} TB (RAID 1)
+                              - HDD: {hdd_storage_final}
+                            """
+                st.markdown(shared_storage)
+            else:
+                shared_storage = f"""
+                    **Shared DAS/SAN Storage:**
+                    - SSD: 2x {raid_1_storage / 1024:.2f} TB (RAID 1)
+                    - HDD: {hdd_storage_final}
+                    """
+                st.markdown(shared_storage)
 
             non_total_display_results = display_results[display_results.index != "Total"]
             windows_count = len(non_total_display_results)
@@ -499,6 +506,8 @@ def main():
             })
 
             if not results.empty:
+                storage_title = "Built-in Server Storage" if len(servers) == 1 else "Shared DAS/SAN Storage"
+
                 doc = generate_document_from_template(
                     os.path.join(app_dir, "assets", "templates", "Temp.docx"),
                     results,
@@ -513,9 +522,10 @@ def main():
                     gpu_specs=gpu_specs,
                     first_year_storage_raid5=first_year_storage_raid5,
                     total_image_storage_raid5=total_image_storage_raid5,
-                    num_studies=num_studies
+                    num_studies=num_studies,
+                    storage_title=storage_title,
+                    shared_storage=shared_storage
                 )
-
                 download_link = get_binary_file_downloader_html(
                     doc,
                     file_label="Download Word Document",
