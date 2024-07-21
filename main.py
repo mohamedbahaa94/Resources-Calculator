@@ -1,6 +1,7 @@
 import os
 import time
 import logging
+import math
 from PIL import Image
 import streamlit as st
 import pandas as pd
@@ -69,14 +70,29 @@ def format_server_specs(servers):
     return server_specs
 
 
+import math
+
+
 def calculate_raid5_disks(usable_storage_tb):
-    standard_disk_sizes_tb = [20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2.4, 1.2]
-    for disk_size in standard_disk_sizes_tb:
-        total_disks = (usable_storage_tb / disk_size) + 1
-        if total_disks >= 3 and total_disks.is_integer():
+    available_disk_sizes_tb = [0.6, 0.9, 1.2, 2.4, 4, 8, 12, 16, 20, 22]
+
+    for disk_size in sorted(available_disk_sizes_tb, reverse=True):
+        total_disks = math.ceil(usable_storage_tb / disk_size) + 1
+        if total_disks >= 3:
             total_disks = int(total_disks)
             return total_disks, disk_size
-    return None, None
+
+    # If no suitable disk size is found, return the nearest higher value
+    smallest_disk_size = min(available_disk_sizes_tb)
+    total_disks = math.ceil(usable_storage_tb / smallest_disk_size) + 1
+    total_disks = int(total_disks)
+    return total_disks, smallest_disk_size
+
+
+# Example usage:
+usable_storage_tb = 10  # Example value for usable storage
+total_disks, disk_size = calculate_raid5_disks(usable_storage_tb)
+print(f"Total disks: {total_disks}, Disk size: {disk_size} TB")
 
 
 def round_to_nearest_divisible_by_two(value):
@@ -208,7 +224,7 @@ def main():
         if broker_required:
             broker_level = st.radio("Broker Level:", ["WL", "HL7 Unidirectional", "HL7 Bidirectional"], index=0)
         else:
-            broker_level = "WL"
+            broker_level = "Not Required"
 
     with st.expander("Additional Features"):
         aidocker_included = st.checkbox(
@@ -499,9 +515,9 @@ def main():
 
             input_values = pd.DataFrame({
                 "Input": ["PACS CCU", "RIS CCU", "Referring Physician CCU", "Project Grade",
-                          "Broker VM Required", "Contract Duration (years)", "Study Size (MB)",
+                          "Broker VM ", "Contract Duration (years)", "Study Size (MB)",
                           "Annual Growth Rate (%)", "Number of Locations", "Number of Machines"],
-                "Value": [pacs_ccu, ris_ccu, ref_phys_ccu, project_grade, broker_required,
+                "Value": [pacs_ccu, ris_ccu, ref_phys_ccu, project_grade, broker_level,
                           contract_duration, study_size_mb, annual_growth_rate, num_locations, num_machines]
             })
 
@@ -524,7 +540,8 @@ def main():
                     total_image_storage_raid5=total_image_storage_raid5,
                     num_studies=num_studies,
                     storage_title=storage_title,
-                    shared_storage=shared_storage
+                    shared_storage=shared_storage,
+                    raid_1_storage_tb=raid_1_storage_tb,
                 )
                 download_link = get_binary_file_downloader_html(
                     doc,

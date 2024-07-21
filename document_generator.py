@@ -18,18 +18,18 @@ def get_binary_file_downloader_html(bin_file, file_label='File', customer_name='
 def generate_document_from_template(template_path, results, results_grade1, results_grade3, df_comparison,
                                     third_party_licenses, notes, input_table, customer_name, high_availability,
                                     server_specs, gpu_specs,
-                                    first_year_storage_raid5, total_image_storage_raid5, num_studies, storage_title,shared_storage):
+                                    first_year_storage_raid5, total_image_storage_raid5, num_studies, storage_title, shared_storage, raid_1_storage_tb):
     doc = Document(template_path)
 
     title = doc.add_heading(f'{customer_name} HW Recommendation', level=1)
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-    doc.add_heading('Customer Information', level=2)
+    doc.add_heading('Customer Information', level=3)
     doc.add_paragraph(f'Customer Name: {customer_name}')
     doc.add_paragraph(f'Date: {datetime.now().strftime("%Y-%m-%d")}')
 
     def add_table(df, heading, style_name):
-        doc.add_heading(heading, level=2)
+        doc.add_heading(heading, level=3)
         table = doc.add_table(rows=1, cols=len(df.columns), style=style_name)
         hdr_cells = table.rows[0].cells
         for i, col_name in enumerate(df.columns):
@@ -44,10 +44,13 @@ def generate_document_from_template(template_path, results, results_grade1, resu
     input_table = pd.concat([num_studies_df, input_table], ignore_index=True)
     input_table['Value'] = input_table['Value'].replace({True: 'Required', False: 'Not Required'})
 
+    # Remove rows where the value is 'Not Required' or 'Required'
+    input_table = input_table[~input_table['Value'].isin(['Not Required', 'Required'])]
+
     add_table(input_table, 'Customer Load / Technical Inputs', 'CustomTableStyle')
 
-    doc.add_heading('Storage Requirements', level=2)
-    doc.add_paragraph(f'RAID 1 Storage (SSD): {first_year_storage_raid5 / 1024:.2f} TB')
+    doc.add_heading('Storage Requirements', level=3)
+    doc.add_paragraph(f'RAID 1 Storage (SSD): {raid_1_storage_tb :.2f} TB')
     doc.add_paragraph(f'RAID 5 Storage (First Year): {first_year_storage_raid5 / 1024:.2f} TB')
     doc.add_paragraph(f'RAID 5 Storage (Full Contract Duration): {total_image_storage_raid5 / 1024:.2f} TB')
 
@@ -64,7 +67,7 @@ def generate_document_from_template(template_path, results, results_grade1, resu
     add_table(third_party_licenses, 'Third Party Licenses', 'CustomTableStyle')
 
     def add_bullet_points(text, heading):
-        doc.add_heading(heading, level=2)
+        doc.add_heading(heading, level=3)
         for line in text.strip().split('\n'):
             if line.strip():
                 paragraph = doc.add_paragraph(line.strip())
@@ -81,7 +84,7 @@ def generate_document_from_template(template_path, results, results_grade1, resu
     add_bullet_points(notes['network_requirements'].replace('-', ''), 'Network Requirements (LAN)')
 
     def add_bullet_points_with_heading(heading, text):
-        doc.add_heading(heading, level=2)
+        doc.add_heading(heading, level=3)
         for line in text.strip().split('\n'):
             if line.strip():
                 if line.strip().startswith('*'):
@@ -106,7 +109,7 @@ def generate_document_from_template(template_path, results, results_grade1, resu
     add_bullet_points_with_heading('Storage Design', shared_storage)
 
     if gpu_specs:
-        doc.add_heading('GPU Requirements', level=2)
+        doc.add_heading('GPU Requirements', level=3)
         doc.add_paragraph(gpu_specs)
 
     buffer = BytesIO()

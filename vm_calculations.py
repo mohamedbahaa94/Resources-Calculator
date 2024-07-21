@@ -304,7 +304,7 @@ def calculate_vm_requirements(num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, proj
                 "VM Type": "PaxeraPACS/PaxeraUltima",
                 "vCores": 2 * round((vm_requirements["PaxeraPACS01"]["vCores"] + vm_requirements["PaxeraUltima01"]["vCores"]) / 1.2 / 2),
                 "RAM (GB)": 2 * round((vm_requirements["PaxeraPACS01"]["RAM (GB)"] + vm_requirements["PaxeraUltima01"]["RAM (GB)"]) / 1.2 / 2),
-                "Storage (GB)": vm_requirements["PaxeraPACS01"]["Storage (GB)"] + vm_requirements["PaxeraUltima01"]["Storage (GB)"]
+                "Storage (GB)": vm_requirements["PaxeraPACS01"]["Storage (GB)"]
             }
             if not ref_phys_external_access and "Referring Physician01" in vm_requirements:
                 combined_vm["vCores"] = 2 * round((combined_vm["vCores"] + vm_requirements["Referring Physician01"]["vCores"]) / 1.2 / 2)
@@ -321,7 +321,7 @@ def calculate_vm_requirements(num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, proj
                         "VM Type": f"DBServer/{vm_type}",
                         "vCores": min(12, 2 * round((vm_requirements["DBServer01"]["vCores"] + vm_requirements[vm_name]["vCores"]) / 1.2 / 2)),
                         "RAM (GB)": min(64, 2 * round((vm_requirements["DBServer01"]["RAM (GB)"] + vm_requirements[vm_name]["RAM (GB)"]) / 1.2 / 2)),
-                        "Storage (GB)": vm_requirements["DBServer01"]["Storage (GB)"] + vm_requirements[vm_name]["Storage (GB)"]
+                        "Storage (GB)": vm_requirements["DBServer01"]["Storage (GB)"]
                     }
                     vm_requirements["DBServer01"] = combined_vm
                     del vm_requirements[vm_name]

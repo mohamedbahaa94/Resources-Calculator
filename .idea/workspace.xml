@@ -8,6 +8,7 @@
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/document_generator.py" beforeDir="false" afterPath="$PROJECT_DIR$/document_generator.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/vm_calculations.py" beforeDir="false" afterPath="$PROJECT_DIR$/vm_calculations.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -80,6 +81,7 @@
       <workItem from="1719920787903" duration="2367000" />
       <workItem from="1720433933601" duration="1342000" />
       <workItem from="1720604990079" duration="6605000" />
+      <workItem from="1721554206425" duration="6034000" />
     </task>
     <task id="LOCAL-00001" summary="new">
       <option name="closed" value="true" />
