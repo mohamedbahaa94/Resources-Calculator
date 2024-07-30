@@ -191,9 +191,11 @@ def main():
         for i in range(2, num_locations + 1):
             location_type = st.selectbox(
                 f"Select interconnection type for Location {i}",
-                ["Gateway HW only", "Business Continuity Mini PACS", "Complete PACS Solution"]
+                ["Gateway HW only", "Business Continuity Mini PACS", "Complete PACS Solution", "Isolated"]
             )
             location_details.append(location_type)
+        num_machines = st.number_input("Number of Machines (Modalities):", min_value=1, value=1)
+
     with st.expander("CCU Details"):
         pacs_enabled = st.checkbox("Include PACS")
         if pacs_enabled:
@@ -219,7 +221,6 @@ def main():
         broker_required = st.checkbox("Broker VM Required (check if explicitly requested)", value=False)
         if broker_required:
             broker_level = st.radio("Broker Level:", ["WL", "HL7 Unidirectional", "HL7 Bidirectional"], index=0)
-            num_machines = st.number_input("Number of Machines (Modalities):", min_value=1, value=1)
         else:
             broker_level = "Not Required"
 
