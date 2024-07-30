@@ -17,8 +17,9 @@ def get_binary_file_downloader_html(bin_file, file_label='File', customer_name='
 
 def generate_document_from_template(template_path, results, results_grade1, results_grade3, df_comparison,
                                     third_party_licenses, notes, input_table, customer_name, high_availability,
-                                    server_specs, gpu_specs,
-                                    first_year_storage_raid5, total_image_storage_raid5, num_studies, storage_title, shared_storage, raid_1_storage_tb):
+                                    server_specs, gpu_specs, first_year_storage_raid5, total_image_storage_raid5,
+                                    num_studies,
+                                    storage_title, shared_storage, raid_1_storage_tb, gateway_specs):
     doc = Document(template_path)
 
     title = doc.add_heading(f'{customer_name} HW Recommendation', level=1)
@@ -103,14 +104,17 @@ def generate_document_from_template(template_path, results, results_grade1, resu
                     numId.set(qn('w:val'), '1')
                     numPr.append(numId)
                     pPr.append(numPr)
+
     design_heading = 'High Availability Design' if high_availability else 'Server Design'
     add_bullet_points_with_heading(design_heading, server_specs)
 
     add_bullet_points_with_heading('Storage Design', shared_storage)
 
     if gpu_specs:
-        doc.add_heading('GPU Requirements', level=3)
-        doc.add_paragraph(gpu_specs)
+        add_bullet_points_with_heading('GPU Requirements', gpu_specs)
+
+    if gateway_specs:
+        add_bullet_points_with_heading('Gateway Requirements', gateway_specs)
 
     buffer = BytesIO()
     doc.save(buffer)

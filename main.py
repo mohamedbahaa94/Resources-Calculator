@@ -25,18 +25,21 @@ def add_server(servers, remaining_threads, remaining_ram, max_threads, max_ram):
 
     if threads_to_allocate > 128:
         processors_to_allocate = 'Dual'
-        cores_per_processor = min((threads_to_allocate // 4), 64)
+        cores_per_processor = min(math.ceil(threads_to_allocate / 4), 64)
+        cores_per_processor = cores_per_processor if cores_per_processor % 2 == 0 else cores_per_processor + 1
         total_cores = cores_per_processor * 2
         total_threads = total_cores * 2
     else:
         if threads_to_allocate > 20:
             processors_to_allocate = 'Dual'
-            cores_per_processor = min((threads_to_allocate // 4), 64)
+            cores_per_processor = min(math.ceil(threads_to_allocate / 4), 64)
+            cores_per_processor = cores_per_processor if cores_per_processor % 2 == 0 else cores_per_processor + 1
             total_cores = cores_per_processor * 2
             total_threads = total_cores * 2
         else:
             processors_to_allocate = 'Single'
-            cores_per_processor = min((threads_to_allocate // 2), 64)
+            cores_per_processor = min(math.ceil(threads_to_allocate / 2), 64)
+            cores_per_processor = cores_per_processor if cores_per_processor % 2 == 0 else cores_per_processor + 1
             total_cores = cores_per_processor
             total_threads = total_cores * 2
 
@@ -68,9 +71,6 @@ def format_server_specs(servers):
           - RAM: {server['RAM']} GB
         """
     return server_specs
-
-
-import math
 
 
 def calculate_raid5_disks(usable_storage_tb):
@@ -185,19 +185,15 @@ def main():
                 unsafe_allow_html=True)
             project_grade = st.selectbox("", [3], index=0)
 
-    with st.expander("Location and Machine Details"):
+    with st.expander("Locations Details"):
         num_locations = st.number_input("Number of Locations:", min_value=1, value=1)
         location_details = []
-        if num_locations > 1:
-            st.subheader("Interconnection Details for Additional Locations")
-            for i in range(2, num_locations + 1):
-                location_type = st.selectbox(
-                    f"Select interconnection type for Location {i}",
-                    ["Uploader HW Only", "Business Continuity Mini PACS", "Complete PACS Solution", "Isolated"]
-                )
-                location_details.append(location_type)
-        num_machines = st.number_input("Number of Machines (Modalities):", min_value=1, value=1)
-
+        for i in range(2, num_locations + 1):
+            location_type = st.selectbox(
+                f"Select interconnection type for Location {i}",
+                ["Gateway HW only", "Business Continuity Mini PACS", "Complete PACS Solution"]
+            )
+            location_details.append(location_type)
     with st.expander("CCU Details"):
         pacs_enabled = st.checkbox("Include PACS")
         if pacs_enabled:
@@ -223,6 +219,7 @@ def main():
         broker_required = st.checkbox("Broker VM Required (check if explicitly requested)", value=False)
         if broker_required:
             broker_level = st.radio("Broker Level:", ["WL", "HL7 Unidirectional", "HL7 Bidirectional"], index=0)
+            num_machines = st.number_input("Number of Machines (Modalities):", min_value=1, value=1)
         else:
             broker_level = "Not Required"
 
@@ -304,7 +301,6 @@ def main():
 
                 test_vm_name = "Test Environment VM (Ultima, PACS, Broker)"
 
-
             # Add Management VM for High Availability
             if high_availability:
                 management_vm_specs = {
@@ -322,7 +318,8 @@ def main():
 
             st.subheader("VM Recommendations:")
             st.dataframe(display_results.style.apply(
-                lambda x: ['background-color: yellow' if 'Test Environment VM' in x.name else '' for i in x], axis=1).format(precision=2))
+                lambda x: ['background-color: yellow' if 'Test Environment VM' in x.name else '' for i in x],
+                axis=1).format(precision=2))
 
             results_grade1, _, first_year_storage_raid5_grade1, total_image_storage_raid5_grade1, total_vcpu_grade1, total_ram_grade1, total_storage_grade1 = calculate_vm_requirements(
                 num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, 1, broker_required, broker_level, num_machines,
@@ -349,9 +346,14 @@ def main():
             st.markdown(f"**RAID 5 Storage (Full Contract Duration):** {total_image_storage_raid5 / 1024:.2f} TB")
 
             comparison_data = {
-                "Specification": ["Total vCores", "Total RAM (GB)", "RAID 1 (SSD) (TB)", "RAID 5 (HDD) 1 Year (TB)", "RAID 5 (HDD) Full Duration (TB)"],
-                "Minimum Specs": [round(total_vcpu_grade1, 2), round(total_ram_grade1, 2), round(raid_1_storage_tb, 2), round(first_year_storage_raid5_grade1 / 1024, 2), round(total_image_storage_raid5_grade1 / 1024, 2)],
-                "Recommended Specs": [round(total_vcpu_grade3, 2), round(total_ram_grade3, 2), round(raid_1_storage_tb, 2), round(first_year_storage_raid5_grade3 / 1024, 2), round(total_image_storage_raid5_grade3 / 1024, 2)]
+                "Specification": ["Total vCores", "Total RAM (GB)", "RAID 1 (SSD) (TB)", "RAID 5 (HDD) 1 Year (TB)",
+                                  "RAID 5 (HDD) Full Duration (TB)"],
+                "Minimum Specs": [round(total_vcpu_grade1, 2), round(total_ram_grade1, 2), round(raid_1_storage_tb, 2),
+                                  round(first_year_storage_raid5_grade1 / 1024, 2),
+                                  round(total_image_storage_raid5_grade1 / 1024, 2)],
+                "Recommended Specs": [round(total_vcpu_grade3, 2), round(total_ram_grade3, 2),
+                                      round(raid_1_storage_tb, 2), round(first_year_storage_raid5_grade3 / 1024, 2),
+                                      round(total_image_storage_raid5_grade3 / 1024, 2)]
             }
             df_comparison = pd.DataFrame(comparison_data)
 
@@ -429,7 +431,8 @@ def main():
                 st.markdown(shared_storage)
 
             non_total_display_results = display_results[display_results.index != "Total"]
-            windows_count = len(non_total_display_results)
+            windows_count = len(non_total_display_results) - len(
+                non_total_display_results[non_total_display_results["Operating System"] == "Ubuntu 20.4"])
 
             third_party_licenses = pd.DataFrame({
                 "Item Description": [
@@ -437,14 +440,16 @@ def main():
                     "MS Windows Server Standard 2019 or higher",
                     "Antivirus Server License",
                     "VMware vSphere Essentials KIT" if not high_availability else "VMware vSphere Essentials Plus KIT",
-                    "Backup Software"
+                    "Backup Software",
+                    "Ubuntu 20.4 Server License"
                 ],
                 "Qty": [
                     2 if training_vm_included else 1,
                     windows_count,
                     windows_count,
                     1,
-                    1
+                    1,
+                    len(non_total_display_results[non_total_display_results["Operating System"] == "Ubuntu 20.4"])
                 ]
             })
 
@@ -494,6 +499,38 @@ def main():
             - Latency less than 1ms.
             """)
 
+            gateway_selected = False
+            for i, location_type in enumerate(location_details, start=2):
+                st.write(f"**Location {i} Interconnection Type:** {location_type}")
+                if location_type == "Gateway HW only":
+                    gateway_selected = True
+
+            if gateway_selected:
+                gateway_specs = """
+                **Recommended Hardware Specifications**  
+                - Processor: Intel core i7, Xeon 2.5 GHz or higher processor type.  
+                - RAM: 16GB  
+                - Storage: 100GB SSD for operating system, 100 GB SSD for imaging data storage (This can be changed based on the retention policy)  
+                - Network Interface: Gigabit Ethernet port  
+
+                **Software Requirements**  
+                - Operating System: Windows 10 or higher, Windows Server 2019 or higher  
+                - DB Software: MSSQL 2019 or higher edition (Express edition can be used)  
+                - Security Software: Firewall software, antivirus  
+
+                **Security Considerations**  
+                - Enable secure boot and ensure regular security updates.  
+                - Implement role-based access controls for administrative tasks.  
+
+                **Internet Requirements**  
+                - Minimum Required bandwidth: 30 Mbps  
+                - Recommended bandwidth: 50 Mbps
+                """
+                st.subheader("Gateway Workstation Specs")
+                st.markdown(gateway_specs)
+            else:
+                gateway_specs = None
+
             notes = {
                 "sizing_notes": """
                         - Provided VM sizing of the Virtual servers will be scaled up horizontally or vertically based on the expected volume of data and number of CCUs.
@@ -542,6 +579,7 @@ def main():
                     storage_title=storage_title,
                     shared_storage=shared_storage,
                     raid_1_storage_tb=raid_1_storage_tb,
+                    gateway_specs=gateway_specs,
                 )
                 download_link = get_binary_file_downloader_html(
                     doc,
