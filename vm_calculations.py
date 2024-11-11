@@ -155,10 +155,10 @@ def calculate_paxera_ultima_resources(pacs_ccu):
 
 def calculate_paxera_pacs_resources(num_studies):
     min_ram_gb = 14
-    max_ram_gb = 32
+    max_ram_gb = 48
     min_vcores = 8
-    max_vcores = 12
-    max_studies_per_vm = 50000
+    max_vcores = 16
+    max_studies_per_vm = 200000
 
     if num_studies <= max_studies_per_vm:
         scaling_factor = num_studies / max_studies_per_vm
@@ -410,7 +410,7 @@ def calculate_vm_requirements(num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, proj
 
     if num_studies <= 50000:
         sql_license = "SQL Express"
-    elif num_studies <= 200000:
+    elif num_studies <= 500000:
         sql_license = "SQL Standard"
     else:
         sql_license = "SQL Enterprise"

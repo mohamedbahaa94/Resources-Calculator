@@ -10,7 +10,6 @@ from vm_calculations import calculate_vm_requirements, modality_sizes
 
 logging.basicConfig(level=logging.INFO)
 
-
 def add_server(servers, remaining_threads, remaining_ram, max_threads, max_ram):
     if remaining_threads == 0 or remaining_ram == 0:
         return remaining_threads, remaining_ram
@@ -73,30 +72,40 @@ def format_server_specs(servers):
     return server_specs
 
 
-def calculate_raid5_disks(usable_storage_tb):
-    available_disk_sizes_tb = [0.6, 0.9, 1.2, 2.4, 4, 8, 12, 16, 20, 22]
+def calculate_raid5_disks(usable_storage_tb, min_disks=3, max_disks=12):
+    available_disk_sizes_tb = sorted([0.6, 0.9, 1.2, 2.4, 4, 8, 12, 16, 20, 22], reverse=True)
+    best_total_disks = None
+    best_disk_size = None
+    smallest_excess = float('inf')
 
-    for disk_size in sorted(available_disk_sizes_tb, reverse=True):
-        total_disks = math.ceil(usable_storage_tb / disk_size) + 1
-        if total_disks >= 3:
-            total_disks = int(total_disks)
-            return total_disks, disk_size
+    for disk_size in available_disk_sizes_tb:
+        # Try disk counts from min_disks to max_disks
+        for total_disks in range(min_disks, max_disks + 1):
+            usable_storage_with_disks = (total_disks - 1) * disk_size  # RAID 5 formula
 
-    # If no suitable disk size is found, return the nearest higher value
-    smallest_disk_size = min(available_disk_sizes_tb)
-    total_disks = math.ceil(usable_storage_tb / smallest_disk_size) + 1
-    total_disks = int(total_disks)
-    return total_disks, smallest_disk_size
+            # Check if this configuration meets the requirement with the smallest excess
+            if usable_storage_with_disks >= usable_storage_tb:
+                excess_storage = usable_storage_with_disks - usable_storage_tb
+                if excess_storage < smallest_excess:
+                    smallest_excess = excess_storage
+                    best_total_disks = total_disks
+                    best_disk_size = disk_size
+                elif excess_storage == smallest_excess and total_disks < best_total_disks:
+                    # Prioritize fewer disks if excess is the same
+                    best_total_disks = total_disks
+                    best_disk_size = disk_size
 
+    return best_total_disks, best_disk_size
 
-# Example usage:
-usable_storage_tb = 10  # Example value for usable storage
-total_disks, disk_size = calculate_raid5_disks(usable_storage_tb)
-print(f"Total disks: {total_disks}, Disk size: {disk_size} TB")
+# Test the optimized function with an input of 18 TB usable storage
 
 
 def round_to_nearest_divisible_by_two(value):
     return round(value / 2) * 2
+
+
+def format_number_with_commas(number):
+    return f"{number:,}"
 
 
 def main():
@@ -114,26 +123,28 @@ def main():
     st.title("PaxeraHealth Sizing Calculator")
     customer_name = st.text_input("Customer Name:")
 
-    with st.expander("Contract and Study Details"):
-        breakdown_per_modality = st.radio("Breakdown per Modality?", ["Yes", "No"])
+    with st.expander("Project and Location Details"):
+        num_machines = st.number_input("Number of Machines (Modalities):", min_value=1, value=1, format="%d")
+        num_locations = st.number_input("Number of Locations:", min_value=1, value=1, format="%d")
+        breakdown_per_modality = st.radio("Breakdown per Modality?", ["No", "Yes"])
         if breakdown_per_modality == "No":
-            num_studies = st.number_input("Number of studies per year:", min_value=0, value=100000)
+            num_studies = st.number_input("Number of studies per year:", min_value=0, value=100000, format="%d")
             modality_cases = {}
         else:
             st.subheader("Modality Breakdown:")
             modality_cases = {
-                "CT": st.number_input("CT Cases:", min_value=0),
-                "MR": st.number_input("MR Cases:", min_value=0),
-                "US": st.number_input("US Cases:", min_value=0),
-                "NM": st.number_input("NM Cases:", min_value=0),
-                "X-ray": st.number_input("X-ray Cases:", min_value=0),
-                "MG": st.number_input("MG Cases:", min_value=0),
-                "Cath": st.number_input("Cath Cases:", min_value=0),
+                "CT": st.number_input("CT Cases:", min_value=0, format="%d"),
+                "MR": st.number_input("MR Cases:", min_value=0, format="%d"),
+                "US": st.number_input("US Cases:", min_value=0, format="%d"),
+                "NM": st.number_input("NM Cases:", min_value=0, format="%d"),
+                "X-ray": st.number_input("X-ray Cases:", min_value=0, format="%d"),
+                "MG": st.number_input("MG Cases:", min_value=0, format="%d"),
+                "Cath": st.number_input("Cath Cases:", min_value=0, format="%d"),
             }
             num_studies = sum(modality_cases.values())
 
-        contract_duration = st.number_input("Contract Duration (years):", min_value=1, value=3)
-        study_size_mb = st.number_input("Study Size (MB):", min_value=0, value=100)
+        contract_duration = st.number_input("Contract Duration (years):", min_value=1, value=3, format="%d")
+        study_size_mb = st.number_input("Study Size (MB):", min_value=0, value=100, format="%d")
         annual_growth_rate = st.number_input("Annual Growth Rate (%):", min_value=0.0, value=10.0, format="%f")
 
     with st.expander("Project Grade"):
@@ -185,37 +196,61 @@ def main():
                 unsafe_allow_html=True)
             project_grade = st.selectbox("", [3], index=0)
 
-    with st.expander("Locations Details"):
-        num_locations = st.number_input("Number of Locations:", min_value=1, value=1)
-        location_details = []
-        for i in range(2, num_locations + 1):
-            location_type = st.selectbox(
-                f"Select interconnection type for Location {i}",
-                ["Gateway HW only", "Business Continuity Mini PACS", "Complete PACS Solution", "Isolated"]
-            )
-            location_details.append(location_type)
-        num_machines = st.number_input("Number of Machines (Modalities):", min_value=1, value=1)
-
     with st.expander("CCU Details"):
         pacs_enabled = st.checkbox("Include PACS")
         if pacs_enabled:
-            pacs_ccu = st.number_input("PACS CCU:", min_value=0, value=8)
+            pacs_ccu = st.number_input("PACS CCU:", min_value=0, value=8, format="%d")
         else:
             pacs_ccu = 0
 
         ris_enabled = st.checkbox("Include RIS")
         if ris_enabled:
-            ris_ccu = st.number_input("RIS CCU:", min_value=0, value=8)
+            ris_ccu = st.number_input("RIS CCU:", min_value=0, value=8, format="%d")
         else:
             ris_ccu = 0
 
         ref_phys_enabled = st.checkbox("Include Referring Physician")
         if ref_phys_enabled:
-            ref_phys_ccu = st.number_input("Referring Physician CCU:", min_value=0, value=8)
+            ref_phys_ccu = st.number_input("Referring Physician CCU:", min_value=0, value=8, format="%d")
             ref_phys_external_access = st.checkbox("External Access for Referring Physician Portal")
         else:
             ref_phys_ccu = 0
             ref_phys_external_access = False
+
+    with st.expander("Business Continuity & Gateway"):
+        location_details = []
+        mini_pacs_settings = []
+        gateway_locations = []
+        for i in range(2, num_locations + 1):
+            location_type = st.selectbox(
+                f"Select interconnection type for Location {i}",
+                ["Gateway Uploader", "Business Continuity Mini PACS"]
+            )
+
+            if location_type == "Business Continuity Mini PACS":
+                mini_pacs_num_studies = st.selectbox(f"Number of studies per year for Location {i}:", [5000, 10000, 15000], index=0, format_func=format_number_with_commas)
+                mini_pacs_pacs_ccu = st.selectbox(f"PACS CCU for Location {i}:", [2, 4, 8], index=0)
+                mini_pacs_ris_enabled = st.checkbox(f"Enable RIS for Location {i}", value=False)
+                if mini_pacs_ris_enabled:
+                    mini_pacs_ris_ccu = st.selectbox(f"RIS CCU for Location {i}:", [4, 8], index=0)
+                else:
+                    mini_pacs_ris_ccu = 0
+                mini_pacs_broker_level = st.radio(f"Broker Level for Location {i}:", ["Not Required", "WL", "HL7 Unidirectional", "HL7 Bidirectional"], index=0)
+                mini_pacs_high_availability = st.checkbox(f"High Availability HW Design Required for Location {i}", value=False)
+
+                mini_pacs_settings.append({
+                    "location": f"Location {i}",
+                    "num_studies": mini_pacs_num_studies,
+                    "pacs_ccu": mini_pacs_pacs_ccu,
+                    "ris_enabled": mini_pacs_ris_enabled,
+                    "ris_ccu": mini_pacs_ris_ccu,
+                    "broker_level": mini_pacs_broker_level,
+                    "high_availability": mini_pacs_high_availability
+                })
+            else:
+                gateway_locations.append(i)
+
+            location_details.append(location_type)
 
     with st.expander("Broker Details"):
         broker_required = st.checkbox("Broker VM Required (check if explicitly requested)", value=False)
@@ -469,9 +504,8 @@ def main():
             if aidocker_included:
                 st.subheader("GPU Requirements:")
                 gpu_specs = """
-                    - GPUs: 1
-                    - GPU Memory: 32 GB
-                    - Nvidia Tesla V100 or equivalent RTX (Preferred)
+                    - GPUs: 2x NVIDIA A10 (24 GB each)
+                    - Total GPU Memory: 48 GB
                     - Nvidia Driver version 450.80.02 or higher
                     - Nvidia driver to support CUDA version 11.4 or higher
                     """
@@ -500,13 +534,62 @@ def main():
             - Latency less than 1ms.
             """)
 
-            gateway_selected = False
-            for i, location_type in enumerate(location_details, start=2):
-                st.write(f"**Location {i} Interconnection Type:** {location_type}")
-                if location_type == "Gateway HW only":
-                    gateway_selected = True
+            mini_pacs_results = []
+            mini_pacs_storage = []
+            mini_pacs_servers = []
+            for i, location in enumerate(mini_pacs_settings):
+                if location["high_availability"]:
+                    location["pacs_ccu"] *= 2
+                    location["ris_ccu"] *= 2
 
-            if gateway_selected:
+                mini_pacs_result, _, mini_pacs_first_year_storage, mini_pacs_total_storage, mini_pacs_vcpu, mini_pacs_ram, _ = calculate_vm_requirements(
+                    location["num_studies"], location["pacs_ccu"], location["ris_ccu"], 0, 1, broker_required, location["broker_level"], num_machines,
+                    contract_duration, study_size_mb, annual_growth_rate, aidocker_included=False,
+                    ark_included=False, ref_phys_external_access=False,
+                    training_vm_included=False, high_availability=location["high_availability"], **modality_cases
+                )
+                mini_pacs_results.append(mini_pacs_result)
+                mini_pacs_storage.append({
+                    "first_year": mini_pacs_first_year_storage,
+                    "total_storage": mini_pacs_total_storage
+                })
+                mini_pacs_servers.append((mini_pacs_vcpu, mini_pacs_ram))
+
+                st.write(f"**Location {i + 2} (Mini PACS)**")
+
+                mini_pacs_display_results = mini_pacs_result.drop(["RAID 1 (SSD)", "RAID 5 (HDD)"])
+                last_index = mini_pacs_display_results.tail(1).index
+                mini_pacs_display_results.loc[last_index, "Operating System"] = ""
+                mini_pacs_display_results.loc[last_index, "Other Software"] = ""
+
+                st.subheader(f"VM Recommendations for {location['location']}:")
+                st.dataframe(mini_pacs_display_results.style.apply(
+                    lambda x: ['background-color: yellow' if 'Test Environment VM' in x.name else '' for i in x],
+                    axis=1).format(precision=2))
+
+                mini_pacs_raid_1_storage_tb = mini_pacs_result.loc["RAID 1 (SSD)", "Storage (GB)"] / 1024
+                mini_pacs_raid_5_storage_tb = mini_pacs_result.loc["RAID 5 (HDD)", "Storage (GB)"] / 1024
+
+                st.subheader(f"Storage Requirements for {location['location']}:")
+                st.markdown(f"**RAID 1 Storage:** {mini_pacs_raid_1_storage_tb:.2f} TB")
+                st.markdown(f"**RAID 5 Storage (First Year):** {mini_pacs_storage[i]['first_year'] / 1024:.2f} TB")
+                st.markdown(f"**RAID 5 Storage (Full Contract Duration):** {mini_pacs_storage[i]['total_storage'] / 1024:.2f} TB")
+
+                mini_pacs_servers = []
+                remaining_threads, remaining_ram = mini_pacs_vcpu, mini_pacs_ram
+                while remaining_threads > 0 or remaining_ram > 0:
+                    if remaining_ram == 0:
+                        logging.warning("No remaining RAM to allocate. Exiting loop.")
+                        break
+                    remaining_threads, remaining_ram = add_server(
+                        mini_pacs_servers, remaining_threads, remaining_ram, max_threads_per_server, max_ram_per_server
+                    )
+
+                mini_pacs_server_specs = format_server_specs(mini_pacs_servers)
+                st.subheader(f"Server Design for {location['location']}:")
+                st.markdown(mini_pacs_server_specs)
+
+            if gateway_locations:
                 gateway_specs = """
                 **Recommended Hardware Specifications**  
                 - Processor: Intel core i7, Xeon 2.5 GHz or higher processor type.  
@@ -528,6 +611,8 @@ def main():
                 - Recommended bandwidth: 50 Mbps
                 """
                 st.subheader("Gateway Workstation Specs")
+                st.markdown(f"<h4>Gateway Locations: {', '.join(map(str, gateway_locations))}</h4>",
+                            unsafe_allow_html=True)
                 st.markdown(gateway_specs)
             else:
                 gateway_specs = None
@@ -582,6 +667,7 @@ def main():
                     raid_1_storage_tb=raid_1_storage_tb,
                     gateway_specs=gateway_specs,
                 )
+
                 download_link = get_binary_file_downloader_html(
                     doc,
                     file_label="Download Word Document",
