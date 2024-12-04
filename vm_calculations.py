@@ -127,9 +127,9 @@ def calculate_dbserver_resources(num_studies, ris_ccu=0):
         return vm_configs
 
 def calculate_paxera_ultima_resources(pacs_ccu):
-    ccu_thresholds = [4, 8, 12, 24, 32]
-    ram_gb_tiers = [8, 16, 24, 48, 64]
-    vcores_tiers = [4, 6, 8, 10, 12]
+    ccu_thresholds = [4, 8, 12,16, 24, 32]
+    ram_gb_tiers = [8, 16, 24, 32,48, 64]
+    vcores_tiers = [4, 6, 8, 10,10, 12]
     max_ccu_per_vm = 32
 
     if pacs_ccu <= max_ccu_per_vm:
@@ -157,7 +157,7 @@ def calculate_paxera_pacs_resources(num_studies):
     min_ram_gb = 14
     max_ram_gb = 48
     min_vcores = 8
-    max_vcores = 16
+    max_vcores = 14
     max_studies_per_vm = 200000
 
     if num_studies <= max_studies_per_vm:
@@ -182,10 +182,34 @@ def calculate_paxera_pacs_resources(num_studies):
 
         return vm_configs
 
-def calculate_vm_requirements(num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, project_grade, broker_required, broker_level,
-                              num_machines, contract_duration, study_size_mb, annual_growth_rate, breakdown_per_modality=False,
-                              aidocker_included=False, ark_included=False, ref_phys_external_access=False,
-                              training_vm_included=False, high_availability=False, **modality_cases):
+def calculate_vm_requirements(
+    num_studies,
+    pacs_ccu,
+    ris_ccu,
+    ref_phys_ccu,
+    project_grade,
+    broker_required,
+    broker_level,
+    num_machines,
+    contract_duration,
+    study_size_mb,
+    annual_growth_rate,
+    breakdown_per_modality=False,
+    aidocker_included=False,
+    ark_included=False,
+    u9_ai_features=None,  # Updated: Add dynamic U9.AI feature handling
+    ref_phys_external_access=False,
+    patient_portal_ccu=0,
+    patient_portal_external_access=False,
+    training_vm_included=False,
+    high_availability=False,
+    combine_pacs_ris=False,
+    **modality_cases
+):
+    """
+    Calculates the VM requirements for a medical imaging solution.
+    Incorporates dynamic handling of AI features and other system components.
+    """
 
     vm_specs = {
         "PaxeraUltima": {"vcores": 8, "base_ram": 8, "storage_gb": 150},
@@ -201,6 +225,7 @@ def calculate_vm_requirements(num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, proj
         "PaxeraBroker": 1 if broker_required else 0,
         "PaxeraRIS": 1 if ris_ccu > 0 else 0,
         "Referring Physician": 1 if ref_phys_ccu > 0 and ref_phys_external_access else 0,
+        "Patient Portal": 1 if patient_portal_ccu > 0 and patient_portal_external_access else 0,  # Add this line
     }
 
     if breakdown_per_modality:
@@ -217,7 +242,10 @@ def calculate_vm_requirements(num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, proj
     vm_config_lists = {
         "PaxeraUltima": calculate_paxera_ultima_resources(pacs_ccu) if pacs_ccu > 0 else [],
         "PaxeraRIS": calculate_paxera_ultima_resources(ris_ccu) if ris_ccu > 0 else [],
-        "Referring Physician": calculate_referring_physician_resources(ref_phys_ccu) if ref_phys_ccu > 0 and ref_phys_external_access else []
+        "Referring Physician": calculate_referring_physician_resources(
+            ref_phys_ccu) if ref_phys_ccu > 0 and ref_phys_external_access else [],
+        "Patient Portal": calculate_referring_physician_resources(
+            patient_portal_ccu) if patient_portal_ccu > 0 and patient_portal_external_access else []  # Add this line
     }
 
     for vm_type, config_list in vm_config_lists.items():
@@ -249,6 +277,50 @@ def calculate_vm_requirements(num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, proj
                 "RAM (GB)": ram_gb,
                 "Storage (GB)": 150,
             }
+    if combine_pacs_ris and pacs_ccu > 0 and ris_ccu > 0:
+        # Filter all PaxeraUltima and PaxeraRIS VMs
+        ultima_vms = [vm for vm in vm_requirements if vm.startswith("PaxeraUltima")]
+        ris_vms = [vm for vm in vm_requirements if vm.startswith("PaxeraRIS")]
+
+        combined_vms = []
+        num_combined_vms = max(len(ultima_vms), len(ris_vms))  # Take the larger number of VMs
+
+        for i in range(num_combined_vms):
+            # Handle combining corresponding VMs or use only one if the other is missing
+            ultima_vm = vm_requirements.get(ultima_vms[i]) if i < len(ultima_vms) else None
+            ris_vm = vm_requirements.get(ris_vms[i]) if i < len(ris_vms) else None
+
+            if ultima_vm and ris_vm:
+                # Combine the corresponding VMs, taking the maximum of their specs
+                combined_vm = {
+                    "VM Type": "PaxeraUltima/PaxeraRIS",
+                    "vCores": max(ultima_vm["vCores"], ris_vm["vCores"]),
+                    "RAM (GB)": max(ultima_vm["RAM (GB)"], ris_vm["RAM (GB)"]),
+                    "Storage (GB)": max(ultima_vm["Storage (GB)"], ris_vm["Storage (GB)"]),
+                }
+            elif ultima_vm:
+                # Use only the Ultima VM specs if RIS VM is missing
+                combined_vm = ultima_vm.copy()
+                combined_vm["VM Type"] = "PaxeraUltima/PaxeraRIS"
+            elif ris_vm:
+                # Use only the RIS VM specs if Ultima VM is missing
+                combined_vm = ris_vm.copy()
+                combined_vm["VM Type"] = "PaxeraUltima/PaxeraRIS"
+
+            combined_vms.append(combined_vm)
+
+        # Remove the original Ultima and RIS VMs
+        for vm in ultima_vms + ris_vms:
+            vm_requirements.pop(vm, None)
+
+        # Add the combined VMs to the requirements
+        for i, combined_vm in enumerate(combined_vms, start=1):
+            combined_vm_name = f"PaxeraUltima/RIS{i:02d}"  # Ensure consistent naming with incrementing numbers
+            vm_requirements[combined_vm_name] = combined_vm
+
+        # Disable the separate VM types in `vms_needed`
+        vms_needed["PaxeraUltima"] = 0
+        vms_needed["PaxeraRIS"] = 0
 
     if broker_required or (pacs_ccu > 0 and ris_ccu > 0):
         if broker_required:
@@ -280,23 +352,91 @@ def calculate_vm_requirements(num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, proj
 
     if not ref_phys_external_access and ref_phys_ccu > 0:
         ref_phys_vm_resources = calculate_referring_physician_resources(ref_phys_ccu)
-        for num_vms, ram_gb, vcores in ref_phys_vm_resources:
-            if "PaxeraUltima01" in vm_requirements:
-                vm_requirements["PaxeraUltima01"]["vCores"] = 2 * round((vm_requirements["PaxeraUltima01"]["vCores"] + vcores) / 1.2 / 2)
-                vm_requirements["PaxeraUltima01"]["RAM (GB)"] = 2 * round((vm_requirements["PaxeraUltima01"]["RAM (GB)"] + ram_gb) / 1.2 / 2)
-            elif "PaxeraPACS01" in vm_requirements:
-                vm_requirements["PaxeraPACS01"]["vCores"] = 2 * round((vm_requirements["PaxeraPACS01"]["vCores"] + vcores) / 1.2 / 2)
-                vm_requirements["PaxeraPACS01"]["RAM (GB)"] = 2 * round((vm_requirements["PaxeraPACS01"]["RAM (GB)"] + ram_gb) / 1.2 / 2)
-            else:
-                vm_requirements["PaxeraUltima01"] = {
-                    "VM Type": "PaxeraUltima",
-                    "vCores": vcores,
-                    "RAM (GB)": ram_gb,
-                    "Storage (GB)": 150,
-                }
+        max_vcores_per_vm = 12  # Example threshold for vCores
+        max_ram_per_vm = 64  # Example threshold for RAM in GB
 
     if not ref_phys_external_access and ref_phys_ccu > 0:
-        del vm_config_lists["Referring Physician"]
+        ref_phys_vm_resources = calculate_referring_physician_resources(ref_phys_ccu)
+        max_vcores_per_vm = 12  # Example threshold for vCores
+        max_ram_per_vm = 64  # Example threshold for RAM in GB
+
+        for num_vms, ram_gb, vcores in ref_phys_vm_resources:
+            if combine_pacs_ris:
+                # Handle combined PaxeraUltima/RIS VM
+                if "PaxeraUltima/RIS01" in vm_requirements:
+                    # Check if adding exceeds limits
+                    current_vcores = vm_requirements["PaxeraUltima/RIS01"]["vCores"]
+                    current_ram = vm_requirements["PaxeraUltima/RIS01"]["RAM (GB)"]
+                    new_vcores = current_vcores + vcores
+                    new_ram = current_ram + ram_gb
+
+                    if new_vcores > max_vcores_per_vm or new_ram > max_ram_per_vm:
+                        # Add a new VM if limits are exceeded
+                        new_vm_name = f"PaxeraUltima/RIS{len(vm_requirements) + 1:02d}"
+                        vm_requirements[new_vm_name] = {
+                            "VM Type": "PaxeraUltima/RIS",
+                            "vCores": vcores,
+                            "RAM (GB)": ram_gb,
+                            "Storage (GB)": 150,
+                        }
+                    else:
+                        # Add resources to the existing VM
+                        vm_requirements["PaxeraUltima/RIS01"]["vCores"] = new_vcores
+                        vm_requirements["PaxeraUltima/RIS01"]["RAM (GB)"] = new_ram
+                else:
+                    # Create the first combined VM if it doesn't exist
+                    vm_requirements["PaxeraUltima/RIS01"] = {
+                        "VM Type": "PaxeraUltima/RIS",
+                        "vCores": vcores,
+                        "RAM (GB)": ram_gb,
+                        "Storage (GB)": 150,
+                    }
+            else:
+                # Handle standalone PaxeraUltima VM
+                if "PaxeraUltima01" in vm_requirements:
+                    # Check if adding exceeds limits
+                    current_vcores = vm_requirements["PaxeraUltima01"]["vCores"]
+                    current_ram = vm_requirements["PaxeraUltima01"]["RAM (GB)"]
+                    new_vcores = current_vcores + vcores
+                    new_ram = current_ram + ram_gb
+
+                    if new_vcores > max_vcores_per_vm or new_ram > max_ram_per_vm:
+                        # Add a new VM if limits are exceeded
+                        new_vm_name = f"PaxeraUltima{len(vm_requirements) + 1:02d}"
+                        vm_requirements[new_vm_name] = {
+                            "VM Type": "PaxeraUltima",
+                            "vCores": vcores,
+                            "RAM (GB)": ram_gb,
+                            "Storage (GB)": 150,
+                        }
+                    else:
+                        # Add resources to the existing VM
+                        vm_requirements["PaxeraUltima01"]["vCores"] = new_vcores
+                        vm_requirements["PaxeraUltima01"]["RAM (GB)"] = new_ram
+                else:
+                    # Create the first PaxeraUltima VM if it doesn't exist
+                    vm_requirements["PaxeraUltima01"] = {
+                        "VM Type": "PaxeraUltima",
+                        "vCores": vcores,
+                        "RAM (GB)": ram_gb,
+                        "Storage (GB)": 150,
+                    }
+        # Combine PaxeraUltima/PaxeraRIS and PaxeraUltima/RIS into one
+        if combine_pacs_ris and pacs_ccu > 0 and ris_ccu > 0:
+            # Initialize a combined VM configuration
+            combined_vm = {"VM Type": "PaxeraUltima/PaxeraRIS", "vCores": 0, "RAM (GB)": 0, "Storage (GB)": 0}
+
+            # Aggregate resources for PaxeraUltima/PaxeraRIS and PaxeraUltima/RIS
+            for vm_name in list(vm_requirements.keys()):  # Use list to avoid modifying the dictionary during iteration
+                if "PaxeraUltima/PaxeraRIS" in vm_name or "PaxeraUltima/RIS" in vm_name:
+                    combined_vm["vCores"] += vm_requirements[vm_name]["vCores"]
+                    combined_vm["RAM (GB)"] += vm_requirements[vm_name]["RAM (GB)"]
+                    combined_vm["Storage (GB)"] = max(combined_vm["Storage (GB)"],
+                                                      vm_requirements[vm_name]["Storage (GB)"])
+                    del vm_requirements[vm_name]  # Remove the original VM entry
+
+            # Add the combined VM back to the requirements
+            vm_requirements["PaxeraUltima/RIS"] = combined_vm
 
     if project_grade == 1:
         if "PaxeraPACS01" in vm_requirements and "PaxeraUltima01" in vm_requirements:
@@ -374,9 +514,59 @@ def calculate_vm_requirements(num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, proj
 
     if vm_requirements:
         df_results = pd.DataFrame.from_dict(vm_requirements, orient='index')
-        if aidocker_included:
-            vm_requirements["AISegmentationDocker01"] = {
-                "VM Type": "AI Segmentation Docker",
+        # Initialize AI Docker-specific VMs if U9.AI is included
+        if aidocker_included and u9_ai_features:
+            for feature in u9_ai_features:
+                if feature == "Organ Segmentator":
+                    vm_requirements["OrganSegmentator"] = {
+                        "VM Type": "Organ Segmentator Docker",
+                        "vCores": 12,
+                        "RAM (GB)": 48,
+                        "Storage (GB)": 100
+                    }
+                    total_vcpu += 12
+                    total_ram += 48
+                    total_storage += 100
+                elif feature == "Lesion Segmentator 2D":
+                    vm_requirements["LesionSegmentator2D"] = {
+                        "VM Type": "Lesion Segmentator 2D Docker",
+                        "vCores": 4,
+                        "RAM (GB)": 8,
+                        "Storage (GB)": 50
+                    }
+                    total_vcpu += 4
+                    total_ram += 8
+                    total_storage += 50
+                elif feature == "Lesion Segmentator 3D":
+                    vm_requirements["LesionSegmentator3D"] = {
+                        "VM Type": "Lesion Segmentator 3D Docker",
+                        "vCores": 6,
+                        "RAM (GB)": 8,
+                        "Storage (GB)": 50
+                    }
+                    total_vcpu += 6
+                    total_ram += 8
+                    total_storage += 50
+                elif feature == "Speech-to-text Container":
+                    vm_requirements["SpeechToText"] = {
+                        "VM Type": "Speech-to-text Docker",
+                        "vCores": 4,
+                        "RAM (GB)": 4,
+                        "Storage (GB)": 50
+                    }
+                    total_vcpu += 4
+                    total_ram += 4
+                    total_storage += 50
+
+        if ark_included:
+            vm_requirements["AIARKManager01"] = {
+                "VM Type": "AI ARK Manager",
+                "vCores": 12,
+                "RAM (GB)": 32,
+                "Storage (GB)": 100
+            }
+            vm_requirements["AIARKLAB01"] = {
+                "VM Type": "AI ARK LAB",
                 "vCores": 12,
                 "RAM (GB)": 32,
                 "Storage (GB)": 300
@@ -384,24 +574,12 @@ def calculate_vm_requirements(num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, proj
             total_vcpu += 12
             total_ram += 32
             total_storage += 300
-        if ark_included:
-            for i in range(2):
-                vm_name = f"AISegmentationDocker0{i + 1}"
-                vm_requirements[vm_name] = {
-                    "VM Type": "AI Segmentation Docker",
-                    "vCores": 12,
-                    "RAM (GB)": 32,
-                    "Storage (GB)": 300
-                }
-            vm_requirements["AIARKLAB01"] = {
-                "VM Type": "AI ARK LAB",
-                "vCores": 12,
-                "RAM (GB)": 32,
-                "Storage (GB)": 300
-            }
-            total_vcpu += 36
-            total_ram += 96
-            total_storage += 900
+
+
+            total_vcpu += 12
+            total_ram += 32
+            total_storage += 100
+
         df_results = pd.DataFrame.from_dict(vm_requirements, orient='index')
 
         df_results.loc["Total"] = ["-", total_vcpu, total_ram, total_storage]

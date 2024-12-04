@@ -208,6 +208,13 @@ def main():
             ris_ccu = st.number_input("RIS CCU:", min_value=0, value=8, format="%d")
         else:
             ris_ccu = 0
+        combine_pacs_ris = False
+        if pacs_enabled and ris_enabled and pacs_ccu > 0 and ris_ccu > 0:
+            combine_pacs_ris = st.checkbox("Combine PACS and RIS VMs")
+            if combine_pacs_ris:
+                st.warning("Combining PACS and RIS VMs will use shared resources for both systems.")
+        else:
+            combine_pacs_ris = False  # Default to False if conditions are not met
 
         ref_phys_enabled = st.checkbox("Include Referring Physician")
         if ref_phys_enabled:
@@ -216,6 +223,13 @@ def main():
         else:
             ref_phys_ccu = 0
             ref_phys_external_access = False
+        patient_portal_enabled = st.checkbox("Include Patient Portal")
+        if patient_portal_enabled:
+            patient_portal_ccu = st.number_input("Patient Portal CCU:", min_value=0, value=8, format="%d")
+            patient_portal_external_access = True
+        else:
+            patient_portal_ccu= 0
+            patient_portal_external_access = False
 
     with st.expander("Business Continuity & Gateway"):
         location_details = []
@@ -258,24 +272,73 @@ def main():
             broker_level = st.radio("Broker Level:", ["WL", "HL7 Unidirectional", "HL7 Bidirectional"], index=0)
         else:
             broker_level = "Not Required"
+    # Initialize AI module variables
+    organ_segmentator = False
+    lesion_segmentator_2d = False
+    lesion_segmentator_3d = False
+    speech_to_text_container = False
 
-    with st.expander("Additional Features"):
+    # AI Features Section
+    with st.expander("AI Features"):
+        # U9.Ai Features
         aidocker_included = st.checkbox(
-            "Include U9th Integrated AI modules (Auto Segmentation, Spine Labeling, etc.)",
+            "Include U9th Integrated AI modules",
             value=False,
             disabled=(num_studies == 0)
         )
 
+        if aidocker_included:
+            st.markdown("#### U9th AI Modules")
+            organ_segmentator = st.checkbox("Organ Segmentator")
+            lesion_segmentator_2d = st.checkbox("Lesion Segmentator 2D")
+            lesion_segmentator_3d = st.checkbox("Lesion Segmentator 3D")
+            speech_to_text_container = st.checkbox("Speech-to-text Container")
+
+        # ARKAI
         ark_included = st.checkbox(
             "Include ARKAI",
             value=False,
             disabled=(num_studies == 0)
         )
+
+    # Hardware and Design Features Section
+    with st.expander("Hardware and Design Features"):
         high_availability = st.checkbox("High Availability HW Design Required", value=False)
         training_vm_included = st.checkbox("Include Testing/Training VM", value=False)
 
-    if aidocker_included and ark_included:
-        aidocker_included = False
+        use_nas_backup = st.checkbox("Include NAS Storage for Backup", value=False)
+        if use_nas_backup:
+            # Redundancy factor input
+            nas_redundancy_factor = st.number_input(
+                "NAS Redundancy Factor (e.g., 1.5 for 50% extra storage):",
+                min_value=1.0, value=1.5, step=0.1
+            )
+
+            # Duration input for NAS storage backup
+            nas_backup_years = st.number_input(
+                "Number of Years for NAS Storage Backup:",
+                min_value=contract_duration,  # Minimum value is the contract period
+                value=contract_duration,  # Default to contract period
+                step=1
+            )
+
+        # Intermediate/Short-Term Storage Options
+        include_fast_tier_storage = st.checkbox(
+            "Include High-Performance Tier for Short-Term Image Storage (e.g., SSD or High-Speed SATA)"
+        )
+        fast_tier_duration = None  # Initialize variable
+        if include_fast_tier_storage:
+            fast_tier_duration = st.radio(
+                "Select Duration for High-Performance Tier Storage:",
+                options=["6 Months", "1 Year"],
+                index=0
+            )
+        else:
+            fast_tier_duration = "Not Selected"  # Set default value if not selected
+
+        # Workstation Specifications
+        include_workstation_specs = st.checkbox("Include Workstation Specifications")
+
 
     calculate = st.button("Calculate")
 
@@ -292,12 +355,35 @@ def main():
             logging.info("Starting VM Requirements Calculation")
             start_calc_time = time.time()
             results, sql_license, first_year_storage_raid5, total_image_storage_raid5, total_vcpu, total_ram, total_storage = calculate_vm_requirements(
-                num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, project_grade, broker_required, broker_level,
-                num_machines,
-                contract_duration, study_size_mb, annual_growth_rate, aidocker_included=aidocker_included,
-                ark_included=ark_included, ref_phys_external_access=ref_phys_external_access,
-                training_vm_included=training_vm_included, high_availability=high_availability, **modality_cases
+                num_studies=num_studies,
+                pacs_ccu=pacs_ccu,
+                ris_ccu=ris_ccu,
+                ref_phys_ccu=ref_phys_ccu,
+                project_grade=project_grade,
+                broker_required=broker_required,
+                broker_level=broker_level,
+                num_machines=num_machines,
+                contract_duration=contract_duration,
+                study_size_mb=study_size_mb,
+                annual_growth_rate=annual_growth_rate,
+                breakdown_per_modality=breakdown_per_modality,
+                aidocker_included=aidocker_included,
+                ark_included=ark_included,
+                u9_ai_features=[  # Updated: Dynamic U9.AI feature list
+                    "Organ Segmentator" if organ_segmentator else None,
+                    "Lesion Segmentator 2D" if lesion_segmentator_2d else None,
+                    "Lesion Segmentator 3D" if lesion_segmentator_3d else None,
+                    "Speech-to-text Container" if speech_to_text_container else None
+                ],
+                ref_phys_external_access=ref_phys_external_access,
+                patient_portal_ccu=patient_portal_ccu,
+                patient_portal_external_access=patient_portal_external_access,
+                training_vm_included=training_vm_included,
+                high_availability=high_availability,
+                combine_pacs_ris=combine_pacs_ris,
+                **modality_cases
             )
+
             logging.info(f"VM Requirements Calculation completed in {time.time() - start_calc_time:.2f} seconds")
 
             if not results.empty:
@@ -309,13 +395,26 @@ def main():
                         results.at[index, "Other Software"] = sql_license
                     if "DBServer" in index:
                         results.at[index, "Other Software"] = sql_license
-                    if "AISegmentationDocker" in index:
-                        results.at[index, "Operating System"] = "Ubuntu 20.4"
-                        results.at[
-                            index, "Other Software"] = "Nvidia Driver version 450.80.02 or higher\nNvidia driver to support CUDA version 11.4 or higher"
-                    if "AIARKLAB01" in index:
-                        results.at[index, "Operating System"] = "Ubuntu 20.4"
-                        results.at[index, "Other Software"] = "RTX 4080 / RTX 4090 Video Cards"
+                    for index in results.index:
+                        # Update for specific AI Segmentation Dockers
+                        if any(name in index for name in
+                               ["OrganSegmentator", "LesionSegmentator2D", "LesionSegmentator3D", "SpeechToText"]):
+                            results.at[index, "Operating System"] = "Ubuntu 20.4"
+                            results.at[
+                                index, "Other Software"
+                            ] = "Nvidia Driver version 450.80.02 or higher\nNvidia driver to support CUDA version 11.4 or higher"
+
+                        # Update for ARK Lab
+                        if "AIARKLAB" in index:
+                            results.at[index, "Operating System"] = "Ubuntu 20.4"
+                            results.at[
+                                index, "Other Software"
+                            ] = "Nvidia Driver version 450.80.02 or higher\nNvidia driver to support CUDA version 11.4 or higher"
+
+                        # Special case for ARK Manager
+                        if "AIARKManager" in index:
+                            results.at[index, "Operating System"] = "Windows Server 2019 or Higher"
+                            results.at[index, "Other Software"] = ""
 
             # Add Test Environment VM
             if training_vm_included:
@@ -357,59 +456,127 @@ def main():
                 lambda x: ['background-color: yellow' if 'Test Environment VM' in x.name else '' for i in x],
                 axis=1).format(precision=2))
 
+            # Calculate requirements for grade 1 (minimum) and grade 3 (recommended)
             results_grade1, _, first_year_storage_raid5_grade1, total_image_storage_raid5_grade1, total_vcpu_grade1, total_ram_grade1, total_storage_grade1 = calculate_vm_requirements(
                 num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, 1, broker_required, broker_level, num_machines,
-                contract_duration, study_size_mb, annual_growth_rate, breakdown_per_modality,
+                contract_duration, study_size_mb, annual_growth_rate, combine_pacs_ris=combine_pacs_ris,
                 aidocker_included=aidocker_included, ark_included=ark_included,
-                ref_phys_external_access=ref_phys_external_access, training_vm_included=training_vm_included,
-                **modality_cases
+                ref_phys_external_access=ref_phys_external_access,
+                patient_portal_ccu=patient_portal_ccu,  # Add this line
+                patient_portal_external_access=patient_portal_external_access,  # Add this line
+                training_vm_included=training_vm_included, **modality_cases
             )
 
             results_grade3, _, first_year_storage_raid5_grade3, total_image_storage_raid5_grade3, total_vcpu_grade3, total_ram_grade3, total_storage_grade3 = calculate_vm_requirements(
                 num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, 3, broker_required, broker_level, num_machines,
-                contract_duration, study_size_mb, annual_growth_rate, breakdown_per_modality,
+                contract_duration, study_size_mb, annual_growth_rate, combine_pacs_ris=combine_pacs_ris,
                 aidocker_included=aidocker_included, ark_included=ark_included,
-                ref_phys_external_access=ref_phys_external_access, training_vm_included=training_vm_included,
-                **modality_cases
+                ref_phys_external_access=ref_phys_external_access,
+                patient_portal_ccu=patient_portal_ccu,  # Add this line
+                patient_portal_external_access=patient_portal_external_access,  # Add this line
+                training_vm_included=training_vm_included, **modality_cases
             )
 
-            raid_1_storage_tb = results.loc["RAID 1 (SSD)", "Storage (GB)"] / 1024
+            # Define storage values for display
+            raid_1_storage_tb = results.loc["RAID 1 (SSD)", "Storage (GB)"]/1024
             raid_5_storage_tb = results.loc["RAID 5 (HDD)", "Storage (GB)"] / 1024
 
             st.subheader("Storage Requirements:")
-            st.markdown(f"**RAID 1 Storage:** {raid_1_storage_tb:.2f} TB")
-            st.markdown(f"**RAID 5 Storage (First Year):** {first_year_storage_raid5 / 1024:.2f} TB")
-            st.markdown(f"**RAID 5 Storage (Full Contract Duration):** {total_image_storage_raid5 / 1024:.2f} TB")
 
-            comparison_data = {
-                "Specification": ["Total vCores", "Total RAM (GB)", "RAID 1 (SSD) (TB)", "RAID 5 (HDD) 1 Year (TB)",
-                                  "RAID 5 (HDD) Full Duration (TB)"],
-                "Minimum Specs": [round(total_vcpu_grade1, 2), round(total_ram_grade1, 2), round(raid_1_storage_tb, 2),
-                                  round(first_year_storage_raid5_grade1 / 1024, 2),
-                                  round(total_image_storage_raid5_grade1 / 1024, 2)],
-                "Recommended Specs": [round(total_vcpu_grade3, 2), round(total_ram_grade3, 2),
-                                      round(raid_1_storage_tb, 2), round(first_year_storage_raid5_grade3 / 1024, 2),
-                                      round(total_image_storage_raid5_grade3 / 1024, 2)]
+            # Determine storage multiplier based on selection (6 months = 0.5, 1 year = 1.0)
+            if include_fast_tier_storage:
+                fast_storage_multiplier = 0.5 if fast_tier_duration == "6 Months" else 1.0
+            else:
+                fast_storage_multiplier = 0.0  # No storage for intermediate tier if not included
+
+            # Initialize lists for storage values
+            years = range(1, contract_duration + 1)
+            tier_1_storage = raid_1_storage_tb  # Constant for Tier 1
+            tier_2_storage = []  # Fast image storage (SSD RAID 5) for each year (non-cumulative)
+            tier_3_storage = []  # Long-term storage (HDD RAID 5) (cumulative)
+
+            current_studies = num_studies
+            total_tier_3_storage = 0
+
+            for year in years:
+                # Calculate storage for Tier 2 (Fast Image Storage - SSD RAID 5) for the year
+                fast_storage_for_year = (current_studies * study_size_mb * (1 + annual_growth_rate / 100)) / 1024 / 1024
+                tier_2_storage.append(
+                    round(fast_storage_for_year * fast_storage_multiplier, 2) if include_fast_tier_storage else None
+                )  # Adjusted for selection
+
+                # Calculate storage for Tier 3 (Long-Term Storage - HDD RAID 5) (cumulative)
+                total_tier_3_storage += fast_storage_for_year
+                tier_3_storage.append(round(total_tier_3_storage, 2))  # Cumulative for long-term storage in TB
+
+                # Update the number of studies for the next year
+                current_studies *= (1 + annual_growth_rate / 100)
+
+            # Create the base DataFrame
+            storage_data = {
+                "Year": [f"Year {year}" for year in years],
+                "Tier 1: OS & DB (SSD RAID 1)": [round(tier_1_storage , 2)] * len(years),  # Convert to TB
             }
-            df_comparison = pd.DataFrame(comparison_data)
 
-            st.subheader("Minimum vs. Recommended Resources:")
-            st.dataframe(df_comparison.style.format(precision=2))
+            # Add Tier 2 before Tier 3 if included
+            if include_fast_tier_storage:
+                storage_data["Tier 2: Fast Image Storage (SSD RAID 5)"] = tier_2_storage
 
-            logging.info("Starting Physical Server Allocation")
+            # Add Tier 3
+            storage_data["Tier 3: Long-Term Storage (HDD RAID 5)"] = tier_3_storage
+
+            # Create the table and render it
+            storage_table = pd.DataFrame(storage_data).reset_index(drop=True)  # Remove index
+            st.table(storage_table.style.format(precision=2))
+
+            # Conditional display based on grade
+            if project_grade == 1:  # Minimum vs Recommended Resources for Grade 1
+                comparison_data = {
+                    "Specification": ["Total vCores", "Total RAM (GB)", "RAID 1 (SSD) (TB)", "RAID 5 (HDD) 1 Year (TB)",
+                                      "RAID 5 (HDD) Full Duration (TB)"],
+                    "Minimum Specs": [round(total_vcpu_grade1, 2), round(total_ram_grade1, 2),
+                                      round(raid_1_storage_tb, 2),
+                                      round(first_year_storage_raid5_grade1 / 1024, 2),
+                                      round(total_image_storage_raid5_grade1 / 1024, 2)],
+                    "Recommended Specs": [round(total_vcpu_grade3, 2), round(total_ram_grade3, 2),
+                                          round(raid_1_storage_tb, 2), round(first_year_storage_raid5_grade3 / 1024, 2),
+                                          round(total_image_storage_raid5_grade3 / 1024, 2)]
+                }
+                df_comparison = pd.DataFrame(comparison_data)
+
+                st.subheader("Minimum vs. Recommended Resources:")
+                st.dataframe(df_comparison.style.format(precision=2))
+
+            elif project_grade in [2, 3]:  # Only Recommended Resources for Grade 2 or 3
+                recommended_data = {
+                    "Specification": ["Total vCores", "Total RAM (GB)", "RAID 1 (SSD) (TB)", "RAID 5 (HDD) 1 Year (TB)",
+                                      "RAID 5 (HDD) Full Duration (TB)"],
+                    "Recommended Specs": [round(total_vcpu_grade3, 2), round(total_ram_grade3, 2),
+                                          round(raid_1_storage_tb, 2), round(first_year_storage_raid5_grade3 / 1024, 2),
+                                          round(total_image_storage_raid5_grade3 / 1024, 2)]
+                }
+                df_recommended = pd.DataFrame(recommended_data)
+                df_comparison = pd.DataFrame(recommended_data)
+                st.subheader(f"Recommended Resources:")
+                st.dataframe(df_recommended.style.format(precision=2))
+
+            logging.info("Starting Physical System Allocation")
             total_vcpu = results.loc["Total", "vCores"]
             total_ram = results.loc["Total", "RAM (GB)"]
 
             max_threads_per_server = 128
             max_ram_per_server = 512
 
-            # Adjust total resources for high availability if needed
+            # Section: Physical System Design
+            st.subheader("Physical System Design")
+
+            # Server Design
+            servers = []
             if high_availability:
                 logging.info("Calculating high availability resources")
                 total_vcpu_ha = int(total_vcpu * 0.75)
                 total_ram_ha = int(total_ram * 0.75)
 
-                servers = []
                 remaining_threads, remaining_ram = total_vcpu_ha, total_ram_ha
                 while remaining_threads > 0 or remaining_ram > 0:
                     if remaining_ram == 0:
@@ -422,18 +589,15 @@ def main():
                 # Duplicate the servers for high availability
                 ha_servers = servers + servers
                 server_specs = format_server_specs(ha_servers)
-                st.subheader("High Availability Physical Server Design:")
+                st.markdown("### High Availability Server Design")
                 st.markdown(server_specs)
 
                 logging.info("High availability server allocation complete")
             else:
-                total_vcpu = results.loc["Total", "vCores"]
-                total_ram = results.loc["Total", "RAM (GB)"]
-
+                logging.info("Calculating standard server resources")
                 num_servers = (total_vcpu + max_threads_per_server - 1) // max_threads_per_server
                 avg_ram_per_server = (total_ram + num_servers - 1) // num_servers
 
-                servers = []
                 remaining_threads, remaining_ram = total_vcpu, total_ram
                 while remaining_threads > 0 or remaining_ram > 0:
                     if remaining_ram == 0:
@@ -444,53 +608,196 @@ def main():
                     )
 
                 server_specs = format_server_specs(servers)
-                st.subheader("Physical Server Design:")
+                st.markdown("### Standard Server Design")
                 st.markdown(server_specs)
 
-            raid_1_storage = results.loc["RAID 1 (SSD)", "Storage (GB)"]
-            usable_storage_tb = round_to_nearest_divisible_by_two(total_image_storage_raid5 / 1024)
-            total_disks, disk_size = calculate_raid5_disks(usable_storage_tb)
-            hdd_storage_final = f"{total_disks}x {disk_size} TB (RAID 5)"
-            if len(servers) & ~ high_availability == 1:
-                shared_storage = f"""
-                            **Server Built-in Storage:**
-                              - SSD: 2x {raid_1_storage / 1024:.2f} TB (RAID 1)
-                              - HDD: {hdd_storage_final}
-                            """
-                st.markdown(shared_storage)
+                logging.info("Standard server allocation complete")
+            # Storage Details
+            st.markdown("### Storage Design")
+            raid_1_storage = results.loc["RAID 1 (SSD)", "Storage (GB)"]  # Tier 1 storage
+
+            # Tier 1: OS & DB (SSD RAID 1)
+            raid_1_storage_tb = raid_1_storage / 1024  # Convert to TB
+
+            # Tier 2: Fast Image Storage (SSD RAID 5)
+            if include_fast_tier_storage:
+                intermediate_tier_multiplier = 0.5 if fast_tier_duration == "6 Months" else 1.0
+                intermediate_tier_storage_tb = math.ceil(
+                    first_year_storage_raid5 * intermediate_tier_multiplier / 1024)  # Convert to TB
+                tier_2_disks, tier_2_disk_size = calculate_raid5_disks(intermediate_tier_storage_tb)
+                tier_2_text = f"""
+                **Tier 2: Fast Image Storage (SSD RAID 5):**
+                - SSD Drives: {tier_2_disks}x {tier_2_disk_size:.2f} TB
+                """
             else:
-                shared_storage = f"""
-                    **Shared DAS/SAN Storage:**
-                    - SSD: 2x {raid_1_storage / 1024:.2f} TB (RAID 1)
-                    - HDD: {hdd_storage_final}
-                    """
-                st.markdown(shared_storage)
+                tier_2_disks, tier_2_disk_size, tier_2_text = None, None, ""
+
+            # Tier 3: Long-Term Storage (HDD RAID 5)
+            usable_storage_tb = round_to_nearest_divisible_by_two(total_image_storage_raid5 / 1024)
+            tier_3_disks, tier_3_disk_size = calculate_raid5_disks(usable_storage_tb)
+
+            # Determine storage type
+            if len(servers) == 1 and not high_availability:
+                storage_type = "Built-in Storage"
+            else:
+                storage_type = "Shared DAS/SAN Storage"
+
+            # Generate Storage Details
+            storage_details = f"""
+            #### Storage Details ({storage_type})
+
+            **Tier 1: OS & DB (SSD RAID 1):**
+            - SSD Drives: 2x {raid_1_storage_tb:.2f} TB
+            """
+
+            if tier_2_disks and tier_2_disk_size:  # Check if Tier 2 exists
+                storage_details += f"""
+            **Tier 2: Fast Image Storage (SSD RAID 5):**
+            - SSD Drives: {tier_2_disks}x {tier_2_disk_size:.2f} TB
+            """
+
+                storage_details += f"""
+            **Tier 3: Long-Term Storage (HDD RAID 5):**
+            - HDD Drives: {tier_3_disks}x {tier_3_disk_size:.2f} TB
+            """
+            else:  # If Tier 2 does not exist, promote Tier 3 to Tier 2
+                storage_details += f"""
+            **Tier 2: Long-Term Storage (HDD RAID 5):**
+            - HDD Drives: {tier_3_disks}x {tier_3_disk_size:.2f} TB
+            """
+
+            st.markdown(storage_details)
+
+            # Backup Storage (NAS)
+            if use_nas_backup:
+                # Calculate NAS storage based on redundancy factor and backup years
+                nas_storage_gb = round(
+                    (total_image_storage_raid5 * nas_redundancy_factor * nas_backup_years) / contract_duration)
+                nas_storage_tb = nas_storage_gb / 1024  # Convert to TB
+
+                # Display the calculated NAS storage
+                st.write(f"Estimated NAS Storage Required: {nas_storage_tb:.2f} TB")
+
+                nas_backup_string = f"""
+                **Backup Storage (NAS):**
+                - NAS Storage: {nas_storage_tb:.2f} TB
+                - Redundancy Factor Applied: {nas_redundancy_factor:.1f}
+                - Backup Duration: {nas_backup_years} years
+                - Network Ports: Minimum 2 (1 Gigabit; 10 Gigabit recommended)
+                - Memory: 8 GB (16 GB recommended)
+                - Power Supply: Dual (for redundancy)
+                - RAID Configuration: RAID 5 + hotspare for data protection
+                """
+                st.markdown(nas_backup_string)
+            else:
+                nas_backup_string = None
 
             non_total_display_results = display_results[display_results.index != "Total"]
             windows_count = len(non_total_display_results) - len(
                 non_total_display_results[non_total_display_results["Operating System"] == "Ubuntu 20.4"])
+            # Initialize GPU specs
+            gpu_specs = ""
 
+            if aidocker_included or ark_included:
+                st.subheader("GPU Requirements:")
+                total_gpu_memory = 0
+                gpu_modules = []
+
+                # Check and add U9.Ai modules
+                if organ_segmentator:
+                    gpu_modules.append("Organ Segmentator")
+                    total_gpu_memory += 16
+                if lesion_segmentator_2d:
+                    gpu_modules.append("Lesion Segmentator 2D")
+                    total_gpu_memory += 4
+                if lesion_segmentator_3d:
+                    gpu_modules.append("Lesion Segmentator 3D")
+                    total_gpu_memory += 12
+                if speech_to_text_container:
+                    gpu_modules.append("Speech-to-Text Container")
+                    total_gpu_memory += 4
+
+                # Generate GPU specs for U9.Ai
+                if aidocker_included:
+                    gpu_specs = f"""
+                    - **Total GPU Memory Required**: {total_gpu_memory} GB
+                    - **NVIDIA GPUs**: Recommended
+                    - **Modules**: {', '.join(gpu_modules)}
+                    - **Driver Requirements**: NVIDIA Driver version 450.80.02 or higher, supporting CUDA version 11.4 or higher.
+                    """
+
+                # Handle ARKAI separately
+                if ark_included:
+                    if aidocker_included:
+                        gpu_specs += "\n\n"
+                    gpu_specs += """
+                    - **ARKAI Requirements**:
+                      - Dedicated GPU required for ARKAI workloads.
+                      - Recommended GPU Memory for ARKAI: 16 GB.
+                      - **Driver Requirements**: NVIDIA Driver version 450.80.02 or higher, supporting CUDA version 11.4 or higher.
+                    """
+
+
+                st.markdown(gpu_specs)
+            # Filter Ubuntu Licenses
+            ubuntu_vms_count = len(
+                non_total_display_results[non_total_display_results["Operating System"] == "Ubuntu 20.4"])
+
+            # Update the Third Party Licenses DataFrame
             third_party_licenses = pd.DataFrame({
                 "Item Description": [
                     sql_license,
                     "MS Windows Server Standard 2019 or higher",
                     "Antivirus Server License",
-                    "VMware vSphere Essentials KIT" if not high_availability else "VMware vSphere Essentials Plus KIT",
-                    "Backup Software",
-                    "Ubuntu 20.4 Server License"
+                    "Virtualization Platform License (Supports High Availability)" if high_availability else "Virtualization Platform License",
+                    "Backup Software (Compatible with VMs)",
+                    "Ubuntu 20.4 Server License" if ubuntu_vms_count > 0 else None
                 ],
                 "Qty": [
-                    2 if training_vm_included else 1,
-                    windows_count,
-                    windows_count,
-                    1,
-                    1,
-                    len(non_total_display_results[non_total_display_results["Operating System"] == "Ubuntu 20.4"])
+                    int(2 if training_vm_included else 1),  # SQL licenses
+                    int(len(non_total_display_results)),  # One Windows license per VM
+                    int(len(non_total_display_results)),  # One Antivirus license per VM
+                    1,  # Virtualization license
+                    1,  # Backup software license
+                    int(ubuntu_vms_count) if ubuntu_vms_count > 0 else None  # Ubuntu licenses
                 ]
             })
 
+            # Remove rows with None values
+            third_party_licenses = third_party_licenses.dropna(subset=["Item Description", "Qty"])
+            third_party_licenses["Qty"] = third_party_licenses["Qty"].astype(int)
+
+            # Display the Third Party Licenses Table
             st.subheader("Third Party Licenses")
             st.dataframe(third_party_licenses.style.set_properties(subset=["Item Description"], **{'width': '300px'}))
+
+            # Add Notes Section
+            st.markdown("### Licensing Notes")
+            notes = []
+
+            # Windows Licensing Note
+            notes.append(
+                "- **Windows Server Licensing:** Each VM requires an active Windows Server license. For environments with a Data Center license, these licenses may be unlimited. Verify the licensing model in use.")
+
+            # Virtualization Licensing Note (HA-Specific)
+            if high_availability:
+                notes.append(
+                    "- **Virtualization Platform Licensing:** Ensure the selected platform (e.g., VMware or Hyper-V) supports High Availability features (e.g., vMotion, Live Migration).")
+
+            # Ubuntu Licensing Note (Only if Ubuntu VMs Exist)
+            if ubuntu_vms_count > 0:
+                notes.append(
+                    "- **Ubuntu Licensing:** Ensure sufficient Ubuntu Server licenses are available for VMs running on Linux.")
+
+            # Antivirus Licensing Note
+            notes.append("- **Antivirus Licensing:** One license per VM is required unless otherwise specified.")
+
+            # Backup Software Note
+            notes.append("- **Backup Software:** Ensure compatibility with selected VMs and storage solutions.")
+
+            # Render Notes Dynamically
+            for note in notes:
+                st.markdown(note)
 
             st.subheader("Sizing Notes:")
             st.markdown("""
@@ -499,40 +806,31 @@ def main():
             - SSD recommended for the data drive of the Database Server.
             - It's recommended to have SSD storage for the short Term Storage (STS) that keep last 6 month of data for higher performance in data access.
             """)
-
-            gpu_specs = ""
-            if aidocker_included:
-                st.subheader("GPU Requirements:")
-                gpu_specs = """
-                    - GPUs: 2x NVIDIA A10 (24 GB each)
-                    - Total GPU Memory: 48 GB
-                    - Nvidia Driver version 450.80.02 or higher
-                    - Nvidia driver to support CUDA version 11.4 or higher
-                    """
-            elif ark_included:
-                st.subheader("GPU Requirements:")
-                gpu_specs = """
-                - GPUs: 3
-                - GPU Memory: 32 GB
-                -  2* Nvidia Tesla V100 or equivalent RTX (Preferred)(For Segmentation Dockers)
-                - Nvidia Driver version 450.80.02 or higher
-                - Nvidia driver to support CUDA version 11.4 or higher
-                - RTX 4080 / RTX 4090 Video Cards ( For ARK LAB)
-                    """
-            st.markdown(gpu_specs)
             st.subheader("Technical Requirements:")
             st.markdown("""
             - Provide remote access to the VMs (all VMs) for SW installation and configurations.
             - In case not using dongles, a connection from the VMs to (https://paxaeraultima.net:1435) for PaxeraHealth licensing except the database VM.
             """)
 
-            st.subheader("Network Requirements (LAN):")
-            st.markdown("""
+            st.subheader("Network Requirements:")
+            network_requirements = """
             - LAN bandwidth to be 1GB dedicated.
             - Paxera PACS VMs, Paxera Ultima Viewer VMs, Paxera Broker Integration VMs must be in same vLAN.
             - 1 Gb/s dedicated bandwidth across the vLAN with the maximum number of two network hops.
             - Latency less than 1ms.
-            """)
+            - Site to Site VPN with any other connected branch.
+            """
+
+            # Add DMZ recommendation if Referring Physician External Access is enabled
+            if ref_phys_external_access:
+                network_requirements += """
+            - Referring Physician Portal VMs must be placed in a **DMZ (Demilitarized Zone) network** to isolate external access from internal hospital systems and enhance security.
+            """
+            if patient_portal_external_access:
+                network_requirements += """
+            - Patient Portal VMs must be placed in a **DMZ (Demilitarized Zone) network** to isolate external access from internal hospital systems and enhance security.
+            """
+            st.markdown(network_requirements)
 
             mini_pacs_results = []
             mini_pacs_storage = []
@@ -607,8 +905,8 @@ def main():
                 - Implement role-based access controls for administrative tasks.  
 
                 **Internet Requirements**  
-                - Minimum Required bandwidth: 30 Mbps  
-                - Recommended bandwidth: 50 Mbps
+                - Minimum Required  bandwidth: 30 Mbps  
+                - Recommended  bandwidth: 50 Mbps
                 """
                 st.subheader("Gateway Workstation Specs")
                 st.markdown(f"<h4>Gateway Locations: {', '.join(map(str, gateway_locations))}</h4>",
@@ -633,49 +931,193 @@ def main():
                         - Paxera PACS VMs, Paxera Ultima Viewer VMs, Paxera Broker Integration VMs must be in same vLAN.
                         - 1 Gb/s dedicated bandwidth across the vLAN with the maximum number of two network hops.
                         - Latency less than 1ms.
+                        - Site to Site VPN with any other connected branch.
                         """
             }
 
+            # Prepare AI-related values for input table
+            ai_features = []
+            if aidocker_included:
+                if organ_segmentator:
+                    ai_features.append("Organ Segmentator")
+                if lesion_segmentator_2d:
+                    ai_features.append("Lesion Segmentator 2D")
+                if lesion_segmentator_3d:
+                    ai_features.append("Lesion Segmentator 3D")
+                if speech_to_text_container:
+                    ai_features.append("Speech-to-Text Container")
+
+            ark_feature = "Included" if ark_included else "Not Included"
+
+            # Prepare AI-related values for input table
+            ai_features = []
+            if aidocker_included:
+                if organ_segmentator:
+                    ai_features.append("Organ Segmentator")
+                if lesion_segmentator_2d:
+                    ai_features.append("Lesion Segmentator 2D")
+                if lesion_segmentator_3d:
+                    ai_features.append("Lesion Segmentator 3D")
+                if speech_to_text_container:
+                    ai_features.append("Speech-to-Text Container")
+
+            # Initialize the base Input and Value lists
+            input_list = [
+                "PACS CCU",
+                "RIS CCU",
+                "Referring Physician CCU",
+                "Broker VM",
+                "Contract Duration (years)",
+                "Study Size (MB)",
+                "Annual Growth Rate (%)",
+                "Number of Locations",
+                "Number of Machines"
+            ]
+
+            value_list = [
+                pacs_ccu,
+                ris_ccu,
+                ref_phys_ccu,
+                broker_level,
+                contract_duration,
+                study_size_mb,
+                annual_growth_rate,
+                num_locations,
+                num_machines
+            ]
+
+            # Conditionally add AI Features if any are selected
+            if ai_features:
+                input_list.append("AI Features")
+                value_list.append(", ".join(ai_features))
+
+            # Conditionally add ARKAI if it's included
+            if ark_included:
+                input_list.append("ARKAI")
+                value_list.append("Included")
+
+            # Construct the input values DataFrame
             input_values = pd.DataFrame({
-                "Input": ["PACS CCU", "RIS CCU", "Referring Physician CCU", "Project Grade",
-                          "Broker VM ", "Contract Duration (years)", "Study Size (MB)",
-                          "Annual Growth Rate (%)", "Number of Locations", "Number of Machines"],
-                "Value": [pacs_ccu, ris_ccu, ref_phys_ccu, project_grade, broker_level,
-                          contract_duration, study_size_mb, annual_growth_rate, num_locations, num_machines]
+                "Input": input_list,
+                "Value": value_list
             })
 
-            if not results.empty:
-                storage_title = "Built-in Server Storage" if len(servers) == 1 else "Shared DAS/SAN Storage"
+            # Initialize Workstation Specifications
+            diagnostic_specs = None
+            viewing_specs = None
+            ris_specs = None
 
-                doc = generate_document_from_template(
-                    os.path.join(app_dir, "assets", "templates", "Temp.docx"),
-                    results,
-                    results_grade1,
-                    results_grade3,
-                    df_comparison,
-                    third_party_licenses,
-                    notes, input_values,
-                    customer_name=customer_name,
-                    high_availability=high_availability,
-                    server_specs=server_specs,
-                    gpu_specs=gpu_specs,
-                    first_year_storage_raid5=first_year_storage_raid5,
-                    total_image_storage_raid5=total_image_storage_raid5,
-                    num_studies=num_studies,
-                    storage_title=storage_title,
-                    shared_storage=shared_storage,
-                    raid_1_storage_tb=raid_1_storage_tb,
-                    gateway_specs=gateway_specs,
-                )
+            if include_workstation_specs:
+                st.subheader("Workstation Specifications")
 
-                download_link = get_binary_file_downloader_html(
-                    doc,
-                    file_label="Download Word Document",
-                    customer_name=customer_name,
-                    file_extension=".docx"
-                )
-                st.markdown(download_link, unsafe_allow_html=True)
+                diagnostic_specs = pd.DataFrame({
+                    "Item": [
+                        "Processor", "Memory Capacity", "Hard Drives",
+                        "Internal Optical Drive", "Operating System",
+                        "Medical Grade Monitor", "Monitor", "Graphics"
+                    ],
+                    "Description": [
+                        "Intel Core i7 (6C, 12M Cache, base 3.1GHz, up to 4.5GHz)",
+                        "16 GB, 2 x 8 GB, DDR5, 4400 MT/s, V2",
+                        "512GB PCIe NVMe Class 40 M.2 SSD",
+                        "8x DVD+/-RW 9.5mm Optical Disk Drive",
+                        "Windows 10 Pro English",
+                        "3MP (5MP for Mammo) color high brightness single head",
+                        "24” LCD color monitor",
+                        "Dedicated GPU with at least 4GB VRAM"
+                    ]
+                })
+                st.markdown("### Diagnostic Workstation")
+                st.dataframe(diagnostic_specs)
 
+                # Viewing Workstation Table
+                viewing_specs = pd.DataFrame({
+                    "Item": [
+                        "Processor", "Memory Capacity", "Hard Drives",
+                        "Internal Optical Drive", "Operating System",
+                        "Monitor"
+                    ],
+                    "Description": [
+                        "Intel Core i5 (6C, 12M Cache, base 3.1GHz, up to 4.5GHz)",
+                        "1 x 8 GB, DDR5, 4400 MT/s, V2",
+                        "256GB PCIe NVMe Class 40 M.2 SSD",
+                        "8x DVD+/-RW 9.5mm Optical Disk Drive",
+                        "Windows 10 Pro English",
+                        "24” LCD color monitor"
+                    ]
+                })
+                st.markdown("### PACS Viewing Workstation")
+                st.dataframe(viewing_specs)
+
+                # RIS Workstation Table
+                if ris_enabled:
+                    ris_specs = pd.DataFrame({
+                        "Item": [
+                            "Processor", "Memory Capacity", "Hard Drives",
+                            "Internal Optical Drive", "Operating System",
+                            "Monitor"
+                        ],
+                        "Description": [
+                            "10th Generation Intel® Core™ i5, 6 Cores, 12MB Cache, 3.2GHz",
+                            "8GB 1 x 8GB DDR4-2666MHz",
+                            "256GB PCIe NVMe Class 40 M.2 SSD (3.5 inch)",
+                            "8x DVD+/-RW 9.5mm Optical Disk Drive",
+                            "Windows 10 Pro English",
+                            "24” LCD color monitor"
+                        ]
+                    })  # Set "Item" as the index
+                    st.markdown("### RIS Workstation")
+                    st.dataframe(ris_specs)
+        if high_availability:
+            physical_design_string = "High Availability Server Design:\n" + server_specs
+        else:
+            physical_design_string = "Standard Server Design:\n" + server_specs
+        # Determine shared storage type
+        if len(servers) == 1 and not high_availability:
+            shared_storage = "Built-in Storage"
+        else:
+            shared_storage = "Shared DAS/SAN Storage"
+
+        doc = generate_document_from_template(
+            template_path=os.path.join(app_dir, "assets", "templates", "Temp.docx"),
+            results=results,
+            results_grade1=results_grade1,
+            results_grade3=results_grade3,
+            df_comparison=df_comparison,
+            third_party_licenses=third_party_licenses,
+            notes=notes,
+            input_table=input_values,
+            customer_name=customer_name,
+            high_availability=high_availability,
+            server_specs=server_specs,
+            gpu_specs=gpu_specs,
+            first_year_storage_raid5=first_year_storage_raid5,
+            total_image_storage_raid5=total_image_storage_raid5,
+            num_studies=num_studies,
+            storage_title=storage_type,
+            shared_storage=shared_storage,  # Reintroduced shared storage
+            raid_1_storage_tb=raid_1_storage_tb,
+            gateway_specs=gateway_specs,
+            diagnostic_specs=diagnostic_specs,
+            viewing_specs=viewing_specs,
+            ris_specs=ris_specs,
+            project_grade=project_grade,
+            storage_table=storage_table,
+            physical_design=physical_design_string,
+            nas_backup_details=nas_backup_string,
+            tier_2_disks=tier_2_disks,
+            tier_2_disk_size=tier_2_disk_size,
+            tier_3_disks=tier_3_disks,
+            tier_3_disk_size=tier_3_disk_size
+        )
+
+        download_link = get_binary_file_downloader_html(
+            doc,
+            file_label="Download Word Document",
+            customer_name=customer_name,
+            file_extension=".docx"
+        )
+        st.markdown(download_link, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
