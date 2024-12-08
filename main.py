@@ -72,30 +72,46 @@ def format_server_specs(servers):
     return server_specs
 
 
-def calculate_raid5_disks(usable_storage_tb, min_disks=3, max_disks=12):
+def calculate_raid5_disks(usable_storage_tb, min_disks=3, max_disks=24):
+    """
+    Calculate the optimal RAID 5 disk configuration for the given usable storage requirements.
+
+    RAID 5 uses one disk's capacity for parity, so the usable storage is (total_disks - 1) * disk_size.
+
+    Args:
+        usable_storage_tb (float): The required usable storage in terabytes (TB).
+        min_disks (int): The minimum number of disks in the RAID 5 array (default is 3).
+        max_disks (int): The maximum number of disks in the RAID 5 array (default is 24).
+
+    Returns:
+        (int, float): A tuple containing the total number of disks and the size of each disk in TB.
+                      Returns (None, None) if no valid configuration is found.
+    """
     available_disk_sizes_tb = sorted([0.6, 0.9, 1.2, 2.4, 4, 8, 12, 16, 20, 22], reverse=True)
+
     best_total_disks = None
     best_disk_size = None
     smallest_excess = float('inf')
 
+    # Iterate over each disk size
     for disk_size in available_disk_sizes_tb:
-        # Try disk counts from min_disks to max_disks
+        # Iterate over the possible number of disks
         for total_disks in range(min_disks, max_disks + 1):
             usable_storage_with_disks = (total_disks - 1) * disk_size  # RAID 5 formula
 
-            # Check if this configuration meets the requirement with the smallest excess
+            # Check if the configuration meets the required storage
             if usable_storage_with_disks >= usable_storage_tb:
                 excess_storage = usable_storage_with_disks - usable_storage_tb
+
+                # Update the best configuration if the excess is smaller
                 if excess_storage < smallest_excess:
                     smallest_excess = excess_storage
                     best_total_disks = total_disks
                     best_disk_size = disk_size
-                elif excess_storage == smallest_excess and total_disks < best_total_disks:
-                    # Prioritize fewer disks if excess is the same
-                    best_total_disks = total_disks
-                    best_disk_size = disk_size
 
+    # Return the best configuration
     return best_total_disks, best_disk_size
+
 
 # Test the optimized function with an input of 18 TB usable storage
 
@@ -625,12 +641,8 @@ def main():
                 intermediate_tier_storage_tb = math.ceil(
                     first_year_storage_raid5 * intermediate_tier_multiplier / 1024)  # Convert to TB
                 tier_2_disks, tier_2_disk_size = calculate_raid5_disks(intermediate_tier_storage_tb)
-                tier_2_text = f"""
-                **Tier 2: Fast Image Storage (SSD RAID 5):**
-                - SSD Drives: {tier_2_disks}x {tier_2_disk_size:.2f} TB
-                """
             else:
-                tier_2_disks, tier_2_disk_size, tier_2_text = None, None, ""
+                tier_2_disks, tier_2_disk_size = None, None
 
             # Tier 3: Long-Term Storage (HDD RAID 5)
             usable_storage_tb = round_to_nearest_divisible_by_two(total_image_storage_raid5 / 1024)
@@ -650,20 +662,22 @@ def main():
             - SSD Drives: 2x {raid_1_storage_tb:.2f} TB
             """
 
-            if tier_2_disks and tier_2_disk_size:  # Check if Tier 2 exists
+            # Add Tier 2 or promote Tier 3 to Tier 2
+            if tier_2_disks and tier_2_disk_size:
                 storage_details += f"""
             **Tier 2: Fast Image Storage (SSD RAID 5):**
             - SSD Drives: {tier_2_disks}x {tier_2_disk_size:.2f} TB
             """
-
-                storage_details += f"""
-            **Tier 3: Long-Term Storage (HDD RAID 5):**
-            - HDD Drives: {tier_3_disks}x {tier_3_disk_size:.2f} TB
-            """
-            else:  # If Tier 2 does not exist, promote Tier 3 to Tier 2
+            elif tier_3_disks and tier_3_disk_size:
+                # Rename Tier 3 as Tier 2 if Tier 2 is not available
                 storage_details += f"""
             **Tier 2: Long-Term Storage (HDD RAID 5):**
             - HDD Drives: {tier_3_disks}x {tier_3_disk_size:.2f} TB
+            """
+            else:
+                storage_details += """
+            **Tier 2: Long-Term Storage (HDD RAID 5):**
+            Details not available.
             """
 
             st.markdown(storage_details)
@@ -680,13 +694,13 @@ def main():
 
                 nas_backup_string = f"""
                 **Backup Storage (NAS):**
-                - NAS Storage: {nas_storage_tb:.2f} TB
-                - Redundancy Factor Applied: {nas_redundancy_factor:.1f}
-                - Backup Duration: {nas_backup_years} years
-                - Network Ports: Minimum 2 (1 Gigabit; 10 Gigabit recommended)
-                - Memory: 8 GB (16 GB recommended)
-                - Power Supply: Dual (for redundancy)
-                - RAID Configuration: RAID 5 + hotspare for data protection
+                - **NAS Storage:** {nas_storage_tb:.2f} TB
+                - **Redundancy Factor Applied:** {nas_redundancy_factor:.1f}
+                - **Backup Duration:** {nas_backup_years} years
+                - **Network Ports:** Minimum 2 (1 Gigabit; 10 Gigabit recommended)
+                - **Memory:** 8 GB (16 GB recommended)
+                - **Power Supply:** Dual (for redundancy)
+                - **RAID Configuration:** RAID 5 + hotspare for data protection
                 """
                 st.markdown(nas_backup_string)
             else:
@@ -915,6 +929,19 @@ def main():
             else:
                 gateway_specs = None
 
+            # Add DMZ recommendations dynamically based on access flags
+            dmz_recommendations = ""
+
+            if ref_phys_external_access:
+                dmz_recommendations += """
+                    - Referring Physician Portal VMs must be placed in a DMZ (Demilitarized Zone) network to isolate external access from internal hospital systems and enhance security.
+                """
+            if patient_portal_external_access:
+                dmz_recommendations += """
+                    - Patient Portal VMs must be placed in a DMZ (Demilitarized Zone) network to isolate external access from internal hospital systems and enhance security.
+                """
+
+            # Define the notes dictionary with the dynamically added DMZ recommendations
             notes = {
                 "sizing_notes": """
                         - Provided VM sizing of the Virtual servers will be scaled up horizontally or vertically based on the expected volume of data and number of CCUs.
@@ -926,12 +953,13 @@ def main():
                         - Provide remote access to the VMs (all VMs) for SW installation and configurations.
                         - In case not using dongles, a connection from the VMs to (https://paxaeraultima.net:1435) for PaxeraHealth licensing except the database VM.
                         """,
-                "network_requirements": """
+                "network_requirements": f"""
                         - LAN bandwidth to be 1GB dedicated.
                         - Paxera PACS VMs, Paxera Ultima Viewer VMs, Paxera Broker Integration VMs must be in same vLAN.
                         - 1 Gb/s dedicated bandwidth across the vLAN with the maximum number of two network hops.
                         - Latency less than 1ms.
                         - Site to Site VPN with any other connected branch.
+                        { dmz_recommendations.strip() } 
                         """
             }
 

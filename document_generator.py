@@ -206,17 +206,8 @@ def generate_document_from_template(
         title='System Inputs and Assumptions',
         description=description_text
     )
+
     # Utility to add tables
-    def add_table(df, heading, style_name):
-        doc.add_heading(heading, level=3)
-        table = doc.add_table(rows=1, cols=len(df.columns), style=style_name)
-        hdr_cells = table.rows[0].cells
-        for i, col_name in enumerate(df.columns):
-            hdr_cells[i].text = col_name
-        for index, row in df.iterrows():
-            row_cells = table.add_row().cells
-            for i, value in enumerate(row):
-                row_cells[i].text = str(value)
 
     if storage_table is not None:
         storage_description = (
@@ -275,15 +266,17 @@ def generate_document_from_template(
         description=resource_description_text.strip()
     )
 
-    def add_bullet_points_with_bold(doc, text, heading, bullet_symbol="•"):
+    def add_bullet_points_with_bold(doc, text, heading, bullet_symbol="•", force_bullet=False):
         """
         Adds a section with bullet points and handles bold text within the points.
         Ensures consistent bullet style using a specified bullet symbol.
         Removes leading symbols (like '-') from each line.
-        Skips bullets for lines that are entirely bold or start with bold text.
+        Skips bullets for lines that are entirely bold or start with bold text unless forced.
+        Skips adding the heading if it is empty or contains only whitespace.
         """
-        # Add the section heading
-        doc.add_heading(heading, level=3)
+        # Add the section heading if it's not empty or whitespace
+        if heading.strip():
+            doc.add_heading(heading, level=3)
 
         # Process each line in the text
         for line in text.strip().split('\n'):
@@ -292,7 +285,7 @@ def generate_document_from_template(
                 cleaned_line = line.strip().lstrip('-').strip()
 
                 # Check if the line starts with bold text
-                if cleaned_line.startswith("**") and "**" in cleaned_line[2:]:
+                if not force_bullet and cleaned_line.startswith("**") and "**" in cleaned_line[2:]:
                     # Add a paragraph with bold formatting but no bullet
                     parts = cleaned_line.split("**")
                     paragraph = doc.add_paragraph()
@@ -409,7 +402,7 @@ def generate_document_from_template(
 
             # Process the rest of the NAS details as bullet points
             remaining_lines = "\n".join(backup_lines[1:])
-            add_bullet_points_with_bold(doc, remaining_lines, 'NAS Technical Specifications')  # No additional heading called here
+            add_bullet_points_with_bold(doc, remaining_lines,"",force_bullet=True)# No additional heading called here
 
     # Add Third Party Licenses with No Split
     description_text = (
@@ -437,8 +430,7 @@ def generate_document_from_template(
         )
 
         # Add GPU details as bullet points with bold formatting
-        add_bullet_points_with_bold(doc, gpu_specs, "")
-
+        add_bullet_points_with_bold(doc, gpu_specs, "GPU Specifications", force_bullet=True)
 
     # Add Gateway Specifications (if provided)
     if gateway_specs:
