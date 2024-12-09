@@ -142,6 +142,9 @@ def main():
         breakdown_per_modality = st.radio("Breakdown per Modality?", ["No", "Yes"])
         if breakdown_per_modality == "No":
             num_studies = st.number_input("Number of studies per year:", min_value=0, value=100000, format="%d")
+
+            # Display the number of studies in green with commas
+            st.metric(label="Number of Studies", value=f"{num_studies:,} studies", delta=None, delta_color="off")
             modality_cases = {}
         else:
             st.subheader("Modality Breakdown:")
