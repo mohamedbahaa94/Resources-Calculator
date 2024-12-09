@@ -76,8 +76,6 @@ def calculate_raid5_disks(usable_storage_tb, min_disks=3, max_disks=24):
     """
     Calculate the optimal RAID 5 disk configuration for the given usable storage requirements.
 
-    RAID 5 uses one disk's capacity for parity, so the usable storage is (total_disks - 1) * disk_size.
-
     Args:
         usable_storage_tb (float): The required usable storage in terabytes (TB).
         min_disks (int): The minimum number of disks in the RAID 5 array (default is 3).
@@ -87,15 +85,13 @@ def calculate_raid5_disks(usable_storage_tb, min_disks=3, max_disks=24):
         (int, float): A tuple containing the total number of disks and the size of each disk in TB.
                       Returns (None, None) if no valid configuration is found.
     """
-    available_disk_sizes_tb = sorted([0.6, 0.9, 1.2, 2.4, 4, 8, 12, 16, 20, 22], reverse=True)
+    available_disk_sizes_tb = sorted([ 4, 8, 12, 16, 20, 22], reverse=True)
 
     best_total_disks = None
     best_disk_size = None
     smallest_excess = float('inf')
 
-    # Iterate over each disk size
     for disk_size in available_disk_sizes_tb:
-        # Iterate over the possible number of disks
         for total_disks in range(min_disks, max_disks + 1):
             usable_storage_with_disks = (total_disks - 1) * disk_size  # RAID 5 formula
 
@@ -103,16 +99,17 @@ def calculate_raid5_disks(usable_storage_tb, min_disks=3, max_disks=24):
             if usable_storage_with_disks >= usable_storage_tb:
                 excess_storage = usable_storage_with_disks - usable_storage_tb
 
-                # Update the best configuration if the excess is smaller
-                if excess_storage < smallest_excess:
-                    smallest_excess = excess_storage
+                # Add a penalty for using more disks to prioritize fewer disks
+                penalty = excess_storage + 0.01 * total_disks
+
+                # Update the best configuration if this configuration is better
+                if penalty < smallest_excess:
+                    smallest_excess = penalty
                     best_total_disks = total_disks
                     best_disk_size = disk_size
 
     # Return the best configuration
     return best_total_disks, best_disk_size
-
-
 # Test the optimized function with an input of 18 TB usable storage
 
 
@@ -763,14 +760,14 @@ def main():
                     sql_license,
                     "MS Windows Server Standard 2019 or higher",
                     "Antivirus Server License",
-                    "Virtualization Platform License (Supports High Availability)" if high_availability else "Virtualization Platform License",
+                    "Virtualization Platform License(VMware or HyperV) (Supports High Availability)" if high_availability else "Virtualization Platform License",
                     "Backup Software (Compatible with VMs)",
                     "Ubuntu 20.4 Server License" if ubuntu_vms_count > 0 else None
                 ],
                 "Qty": [
                     int(2 if training_vm_included else 1),  # SQL licenses
-                    int(len(non_total_display_results)),  # One Windows license per VM
-                    int(len(non_total_display_results)),  # One Antivirus license per VM
+                    int(len(non_total_display_results)-ubuntu_vms_count),  # One Windows license per VM
+                    int(len(non_total_display_results)-ubuntu_vms_count),  # One Antivirus license per VM
                     1,  # Virtualization license
                     1,  # Backup software license
                     int(ubuntu_vms_count) if ubuntu_vms_count > 0 else None  # Ubuntu licenses
@@ -929,41 +926,73 @@ def main():
             else:
                 gateway_specs = None
 
-            # Add DMZ recommendations dynamically based on access flags
-            dmz_recommendations = ""
+                # Construct Licensing Notes Dynamically
+                licensing_notes = []
 
-            if ref_phys_external_access:
-                dmz_recommendations += """
-                    - Referring Physician Portal VMs must be placed in a DMZ (Demilitarized Zone) network to isolate external access from internal hospital systems and enhance security.
-                """
-            if patient_portal_external_access:
-                dmz_recommendations += """
-                    - Patient Portal VMs must be placed in a DMZ (Demilitarized Zone) network to isolate external access from internal hospital systems and enhance security.
-                """
+                # Windows Licensing Note
+                licensing_notes.append(
+                    "- **Windows Server Licensing:** Each VM requires an active Windows Server license. For environments with a Data Center license, these licenses may be unlimited. Verify the licensing model in use."
+                )
 
-            # Define the notes dictionary with the dynamically added DMZ recommendations
-            notes = {
-                "sizing_notes": """
-                        - Provided VM sizing of the Virtual servers will be scaled up horizontally or vertically based on the expected volume of data and number of CCUs.
-                        - SSD Datastore recommended for all OS Virtual disks of all VMs.
-                        - SSD recommended for the data drive of the Database Server.
-                        - It's recommended to have SSD storage for the short Term Storage (STS) that keep last 6 month of data for higher performance in data access.
-                        """,
-                "technical_requirements": """
-                        - Provide remote access to the VMs (all VMs) for SW installation and configurations.
-                        - In case not using dongles, a connection from the VMs to (https://paxaeraultima.net:1435) for PaxeraHealth licensing except the database VM.
-                        """,
-                "network_requirements": f"""
-                        - LAN bandwidth to be 1GB dedicated.
-                        - Paxera PACS VMs, Paxera Ultima Viewer VMs, Paxera Broker Integration VMs must be in same vLAN.
-                        - 1 Gb/s dedicated bandwidth across the vLAN with the maximum number of two network hops.
-                        - Latency less than 1ms.
-                        - Site to Site VPN with any other connected branch.
-                        { dmz_recommendations.strip() } 
-                        """
-            }
+                # Virtualization Licensing Note (HA-Specific)
+                if high_availability:
+                    licensing_notes.append(
+                        "- **Virtualization Platform Licensing:** Ensure the selected platform (e.g., VMware or Hyper-V) supports High Availability features (e.g., vMotion, Live Migration)."
+                    )
 
-            # Prepare AI-related values for input table
+                # Ubuntu Licensing Note (Only if Ubuntu VMs Exist)
+                if ubuntu_vms_count > 0:
+                    licensing_notes.append(
+                        "- **Ubuntu Licensing:** Ensure sufficient Ubuntu Server licenses are available for VMs running on Linux."
+                    )
+
+                # Antivirus Licensing Note
+                licensing_notes.append(
+                    "- **Antivirus Licensing:** One license per VM is required unless otherwise specified."
+                )
+
+                # Backup Software Note
+                licensing_notes.append(
+                    "- **Backup Software:** Ensure compatibility with selected VMs and storage solutions."
+                )
+
+                # Combine Licensing Notes into a Single String
+                licensing_notes_text = "\n".join(licensing_notes)
+
+                # Define the DMZ Recommendations
+                dmz_recommendations = ""
+                if ref_phys_external_access:
+                    dmz_recommendations += """
+                                - Referring Physician Portal VMs must be placed in a **DMZ (Demilitarized Zone) network** to isolate external access from internal hospital systems and enhance security.
+                            """
+                if patient_portal_external_access:
+                    dmz_recommendations += """
+                                - Patient Portal VMs must be placed in a **DMZ (Demilitarized Zone) network** to isolate external access from internal hospital systems and enhance security.
+                            """
+
+                # Define the Notes Dictionary
+                notes = {
+                    "licensing_notes": licensing_notes_text.strip(),  # Add dynamically constructed Licensing Notes
+                    "sizing_notes": """
+                                - Provided VM sizing of the Virtual servers will be scaled up horizontally or vertically based on the expected volume of data and number of CCUs.
+                                - SSD Datastore recommended for all OS Virtual disks of all VMs.
+                                - SSD recommended for the data drive of the Database Server.
+                                - It's recommended to have SSD storage for the short Term Storage (STS) that keep last 6 month of data for higher performance in data access.
+                            """,
+                    "technical_requirements": """
+                                - Provide remote access to the VMs (all VMs) for SW installation and configurations.
+                                - In case not using dongles, a connection from the VMs to (https://paxaeraultima.net:1435) for PaxeraHealth licensing except the database VM.
+                            """,
+                    "network_requirements": f"""
+                                - LAN bandwidth to be 1GB dedicated.
+                                - Paxera PACS VMs, Paxera Ultima Viewer VMs, Paxera Broker Integration VMs must be in same vLAN.
+                                - 1 Gb/s dedicated bandwidth across the vLAN with the maximum number of two network hops.
+                                - Latency less than 1ms.
+                                - Site to Site VPN with any other connected branch.
+                                {dmz_recommendations.strip()}
+                            """
+                }
+
             ai_features = []
             if aidocker_included:
                 if organ_segmentator:
@@ -990,29 +1019,55 @@ def main():
                     ai_features.append("Speech-to-Text Container")
 
             # Initialize the base Input and Value lists
-            input_list = [
-                "PACS CCU",
-                "RIS CCU",
-                "Referring Physician CCU",
-                "Broker VM",
-                "Contract Duration (years)",
-                "Study Size (MB)",
-                "Annual Growth Rate (%)",
-                "Number of Locations",
-                "Number of Machines"
-            ]
+            input_list = []
+            value_list = []
 
-            value_list = [
-                pacs_ccu,
-                ris_ccu,
-                ref_phys_ccu,
-                broker_level,
-                contract_duration,
-                study_size_mb,
-                annual_growth_rate,
-                num_locations,
-                num_machines
-            ]
+            # Add items to input_list and value_list conditionally
+            if num_studies > 0:
+                input_list.append("Number of Studies")
+                value_list.append(f"{num_studies:,}")  # Add comma as thousand separator
+
+            if num_locations > 1:  # Only show if there is more than 1 location
+                input_list.append("Number of Locations")
+                value_list.append(num_locations)
+
+            if num_machines > 1:  # Only show if there is more than 1 machine
+                input_list.append("Number of Machines")
+                value_list.append(num_machines)
+
+            input_list.append("Contract Duration (years)")
+            value_list.append(contract_duration)
+
+            input_list.append("Study Size (MB)")
+            value_list.append(study_size_mb)
+
+            if annual_growth_rate > 0:
+                input_list.append("Annual Growth Rate (%)")
+                value_list.append(annual_growth_rate)
+
+            # Add PACS CCU if > 0
+            if pacs_ccu and pacs_ccu > 0:
+                input_list.append("PACS CCU")
+                value_list.append(pacs_ccu)
+
+            # Add RIS CCU if > 0
+            if ris_ccu and ris_ccu > 0:
+                input_list.append("RIS CCU")
+                value_list.append(ris_ccu)
+
+            # Add Referring Physician CCU if > 0
+            if ref_phys_ccu and ref_phys_ccu > 0:
+                input_list.append("Referring Physician CCU")
+                value_list.append(ref_phys_ccu)
+            # Broker Logic
+            if broker_level and broker_level != "Not Required":  # If broker_level is explicitly selected and not "Not Required"
+                input_list.append("Broker VM")
+                value_list.append(broker_level)
+            elif ris_ccu and ris_ccu > 0:  # If RIS CCU > 0 and broker is not explicitly set
+                broker_level = "WL"  # Default to "WL"
+                input_list.append("Broker VM")
+                value_list.append(broker_level)
+            # If broker_level is "Not Required" and RIS CCU is 0, do not add Broker VM to the table
 
             # Conditionally add AI Features if any are selected
             if ai_features:

@@ -412,7 +412,7 @@ def generate_document_from_template(
     add_table_with_no_split(doc, third_party_licenses, title='Third Party Licenses', description=description_text)
 
     # Add Notes Section
-
+    add_bullet_points_with_bold(doc, notes['licensing_notes'], 'Licensing Notes',force_bullet=True)
     add_bullet_points_with_bold(doc, notes['sizing_notes'], 'Sizing Notes')
     add_bullet_points_with_bold(doc, notes['technical_requirements'], 'Technical Requirements')
     add_bullet_points_with_bold(doc, notes['network_requirements'], 'Network Requirements (LAN)')
