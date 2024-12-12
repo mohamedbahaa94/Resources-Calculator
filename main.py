@@ -473,89 +473,96 @@ def main():
                 axis=1).format(precision=2))
 
             # Calculate requirements for grade 1 (minimum) and grade 3 (recommended)
+            # Calculate VM Requirements (Include AI VMs in calculations)
             results_grade1, _, first_year_storage_raid5_grade1, total_image_storage_raid5_grade1, total_vcpu_grade1, total_ram_grade1, total_storage_grade1 = calculate_vm_requirements(
-                num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, 1, broker_required, broker_level, num_machines,
-                contract_duration, study_size_mb, annual_growth_rate, combine_pacs_ris=combine_pacs_ris,
-                aidocker_included=aidocker_included, ark_included=ark_included,
+                num_studies=num_studies,
+                pacs_ccu=pacs_ccu,
+                ris_ccu=ris_ccu,
+                ref_phys_ccu=ref_phys_ccu,
+                project_grade=1,
+                broker_required=broker_required,
+                broker_level=broker_level,
+                num_machines=num_machines,
+                contract_duration=contract_duration,
+                study_size_mb=study_size_mb,
+                annual_growth_rate=annual_growth_rate,
+                breakdown_per_modality=breakdown_per_modality,
+                aidocker_included=aidocker_included,
+                ark_included=ark_included,
+                u9_ai_features=[  # Updated: Dynamic U9.AI feature list
+                    "Organ Segmentator" if organ_segmentator else None,
+                    "Lesion Segmentator 2D" if lesion_segmentator_2d else None,
+                    "Lesion Segmentator 3D" if lesion_segmentator_3d else None,
+                    "Speech-to-text Container" if speech_to_text_container else None
+                ],
                 ref_phys_external_access=ref_phys_external_access,
-                patient_portal_ccu=patient_portal_ccu,  # Add this line
-                patient_portal_external_access=patient_portal_external_access,  # Add this line
-                training_vm_included=training_vm_included, **modality_cases
+                patient_portal_ccu=patient_portal_ccu,
+                patient_portal_external_access=patient_portal_external_access,
+                training_vm_included=training_vm_included,
+                high_availability=high_availability,
+                combine_pacs_ris=combine_pacs_ris,
+                **modality_cases
             )
 
             results_grade3, _, first_year_storage_raid5_grade3, total_image_storage_raid5_grade3, total_vcpu_grade3, total_ram_grade3, total_storage_grade3 = calculate_vm_requirements(
-                num_studies, pacs_ccu, ris_ccu, ref_phys_ccu, 3, broker_required, broker_level, num_machines,
-                contract_duration, study_size_mb, annual_growth_rate, combine_pacs_ris=combine_pacs_ris,
-                aidocker_included=aidocker_included, ark_included=ark_included,
+                num_studies=num_studies,
+                pacs_ccu=pacs_ccu,
+                ris_ccu=ris_ccu,
+                ref_phys_ccu=ref_phys_ccu,
+                project_grade=3,
+                broker_required=broker_required,
+                broker_level=broker_level,
+                num_machines=num_machines,
+                contract_duration=contract_duration,
+                study_size_mb=study_size_mb,
+                annual_growth_rate=annual_growth_rate,
+                breakdown_per_modality=breakdown_per_modality,
+                aidocker_included=aidocker_included,
+                ark_included=ark_included,
+                u9_ai_features=[  # Updated: Dynamic U9.AI feature list
+                    "Organ Segmentator" if organ_segmentator else None,
+                    "Lesion Segmentator 2D" if lesion_segmentator_2d else None,
+                    "Lesion Segmentator 3D" if lesion_segmentator_3d else None,
+                    "Speech-to-text Container" if speech_to_text_container else None
+                ],
                 ref_phys_external_access=ref_phys_external_access,
-                patient_portal_ccu=patient_portal_ccu,  # Add this line
-                patient_portal_external_access=patient_portal_external_access,  # Add this line
-                training_vm_included=training_vm_included, **modality_cases
+                patient_portal_ccu=patient_portal_ccu,
+                patient_portal_external_access=patient_portal_external_access,
+                training_vm_included=training_vm_included,
+                high_availability=high_availability,
+                combine_pacs_ris=combine_pacs_ris,
+                **modality_cases
             )
 
-            # Define storage values for display
-            raid_1_storage_tb = results.loc["RAID 1 (SSD)", "Storage (GB)"]/1024
-            raid_5_storage_tb = results.loc["RAID 5 (HDD)", "Storage (GB)"] / 1024
+            # Define Storage Values for Display
+            raid_1_storage_tb = results_grade3.loc["RAID 1 (SSD)", "Storage (GB)"] / 1024
+            raid_5_storage_tb = total_image_storage_raid5_grade3 / 1024  # Total HDD storage for full duration
 
+            # Storage Design Table
             st.subheader("Storage Requirements:")
-
-            # Determine storage multiplier based on selection (6 months = 0.5, 1 year = 1.0)
-            if include_fast_tier_storage:
-                fast_storage_multiplier = 0.5 if fast_tier_duration == "6 Months" else 1.0
-            else:
-                fast_storage_multiplier = 0.0  # No storage for intermediate tier if not included
-
-            # Initialize lists for storage values
             years = range(1, contract_duration + 1)
             tier_1_storage = raid_1_storage_tb  # Constant for Tier 1
-            tier_2_storage = []  # Fast image storage (SSD RAID 5) for each year (non-cumulative)
-            tier_3_storage = []  # Long-term storage (HDD RAID 5) (cumulative)
+            tier_3_storage = [round(total_image_storage_raid5_grade3 / 1024, 2)] * len(
+                years)  # Long-term storage (cumulative)
 
-            current_studies = num_studies
-            total_tier_3_storage = 0
-
-            for year in years:
-                # Calculate storage for Tier 2 (Fast Image Storage - SSD RAID 5) for the year
-                fast_storage_for_year = (current_studies * study_size_mb * (1 + annual_growth_rate / 100)) / 1024 / 1024
-                tier_2_storage.append(
-                    round(fast_storage_for_year * fast_storage_multiplier, 2) if include_fast_tier_storage else None
-                )  # Adjusted for selection
-
-                # Calculate storage for Tier 3 (Long-Term Storage - HDD RAID 5) (cumulative)
-                total_tier_3_storage += fast_storage_for_year
-                tier_3_storage.append(round(total_tier_3_storage, 2))  # Cumulative for long-term storage in TB
-
-                # Update the number of studies for the next year
-                current_studies *= (1 + annual_growth_rate / 100)
-
-            # Create the base DataFrame
             storage_data = {
                 "Year": [f"Year {year}" for year in years],
-                "Tier 1: OS & DB (SSD RAID 1)": [round(tier_1_storage , 2)] * len(years),  # Convert to TB
+                "Tier 1: OS & DB (SSD RAID 1)": [round(tier_1_storage, 2)] * len(years),
+                "Tier 3: Long-Term Storage (HDD RAID 5)": tier_3_storage,
             }
 
-            # Add Tier 2 before Tier 3 if included
-            if include_fast_tier_storage:
-                storage_data["Tier 2: Fast Image Storage (SSD RAID 5)"] = tier_2_storage
-
-            # Add Tier 3
-            storage_data["Tier 3: Long-Term Storage (HDD RAID 5)"] = tier_3_storage
-
-            # Create the table and render it
-            storage_table = pd.DataFrame(storage_data).reset_index(drop=True)  # Remove index
+            # Create the Storage Table
+            storage_table = pd.DataFrame(storage_data).reset_index(drop=True)
             st.table(storage_table.style.format(precision=2))
-
-            # Conditional display based on grade
+            # Resource Comparison Table
             if project_grade == 1:  # Minimum vs Recommended Resources for Grade 1
                 comparison_data = {
-                    "Specification": ["Total vCores", "Total RAM (GB)", "RAID 1 (SSD) (TB)", "RAID 5 (HDD) 1 Year (TB)",
+                    "Specification": ["Total vCores", "Total RAM (GB)", "RAID 1 (SSD) (TB)",
                                       "RAID 5 (HDD) Full Duration (TB)"],
                     "Minimum Specs": [round(total_vcpu_grade1, 2), round(total_ram_grade1, 2),
-                                      round(raid_1_storage_tb, 2),
-                                      round(first_year_storage_raid5_grade1 / 1024, 2),
-                                      round(total_image_storage_raid5_grade1 / 1024, 2)],
+                                      round(raid_1_storage_tb, 2), round(total_image_storage_raid5_grade1 / 1024, 2)],
                     "Recommended Specs": [round(total_vcpu_grade3, 2), round(total_ram_grade3, 2),
-                                          round(raid_1_storage_tb, 2), round(first_year_storage_raid5_grade3 / 1024, 2),
+                                          round(raid_1_storage_tb, 2),
                                           round(total_image_storage_raid5_grade3 / 1024, 2)]
                 }
                 df_comparison = pd.DataFrame(comparison_data)
@@ -565,16 +572,16 @@ def main():
 
             elif project_grade in [2, 3]:  # Only Recommended Resources for Grade 2 or 3
                 recommended_data = {
-                    "Specification": ["Total vCores", "Total RAM (GB)", "RAID 1 (SSD) (TB)", "RAID 5 (HDD) 1 Year (TB)",
+                    "Specification": ["Total vCores", "Total RAM (GB)", "RAID 1 (SSD) (TB)",
                                       "RAID 5 (HDD) Full Duration (TB)"],
                     "Recommended Specs": [round(total_vcpu_grade3, 2), round(total_ram_grade3, 2),
-                                          round(raid_1_storage_tb, 2), round(first_year_storage_raid5_grade3 / 1024, 2),
+                                          round(raid_1_storage_tb, 2),
                                           round(total_image_storage_raid5_grade3 / 1024, 2)]
                 }
-                df_recommended = pd.DataFrame(recommended_data)
                 df_comparison = pd.DataFrame(recommended_data)
+
                 st.subheader(f"Recommended Resources:")
-                st.dataframe(df_recommended.style.format(precision=2))
+                st.dataframe(df_comparison.style.format(precision=2))
 
             logging.info("Starting Physical System Allocation")
             total_vcpu = results.loc["Total", "vCores"]
@@ -818,21 +825,23 @@ def main():
             - Provided VM sizing of the Virtual servers will be scaled up horizontally or vertically based on the expected volume of data and number of CCUs.
             - SSD Datastore recommended for all OS Virtual disks of all VMs.
             - SSD recommended for the data drive of the Database Server.
-            - It's recommended to have SSD storage for the short Term Storage (STS) that keep last 6 month of data for higher performance in data access.
+            - It's recommended to have SSD storage for the short Term Storage (STS) that keep last 6 months of data for higher performance in data access.
             """)
+
             st.subheader("Technical Requirements:")
             st.markdown("""
             - Provide remote access to the VMs (all VMs) for SW installation and configurations.
             - In case not using dongles, a connection from the VMs to (https://paxaeraultima.net:1435) for PaxeraHealth licensing except the database VM.
+            - **Licensed Operating Systems & Third-Party Components:** Operating systems and all supporting software must be properly licensed and regularly updated to close security gaps and maintain system reliability.
             """)
 
             st.subheader("Network Requirements:")
             network_requirements = """
             - LAN bandwidth to be 1GB dedicated.
-            - Paxera PACS VMs, Paxera Ultima Viewer VMs, Paxera Broker Integration VMs must be in same vLAN.
+            - Paxera PACS VMs, Paxera Ultima Viewer VMs, Paxera Broker Integration VMs must be in the same vLAN.
             - 1 Gb/s dedicated bandwidth across the vLAN with the maximum number of two network hops.
             - Latency less than 1ms.
-            - Site to Site VPN with any other connected branch.
+            - Site-to-Site VPN with any other connected branch.
             """
 
             # Add DMZ recommendation if Referring Physician External Access is enabled
@@ -844,7 +853,26 @@ def main():
                 network_requirements += """
             - Patient Portal VMs must be placed in a **DMZ (Demilitarized Zone) network** to isolate external access from internal hospital systems and enhance security.
             """
+
             st.markdown(network_requirements)
+
+            st.subheader("Minimum Requirements & Recommendations:")
+            st.markdown("""
+            1. **Antivirus on All Backend Servers (Required):**
+               Every server hosting our software components must have robust, up-to-date antivirus protection.
+            2. **Firewall for External Publishing (Required):**
+               Any system accessible from the internet—such as patient portals, referring physician portals, or tele-radiology services—must be protected by a properly configured firewall.
+            3. **Backup Storage for Secondary Copies (Strongly Recommended):**
+               Implementing a reliable backup strategy ensures a secondary copy of critical patient data and system files, enhancing business continuity and recovery capabilities.
+            4. **Additional Security Measures (Recommended):**
+               - Regular Security Updates & Patches: Keep all systems current with the latest patches.
+               - Multi-Factor Authentication (MFA): Enforce MFA for all administrative and remote access accounts.
+               - Network Segmentation & Isolation: Limit potential breaches by isolating critical systems.
+            5. **Non-Compliance & Customer Responsibility:**
+               Failure to adhere to these guidelines places customers at heightened risk for cyberattacks, including ransomware, data breaches, and service interruptions. If recommended security measures are not implemented, PaxeraHealth cannot be held responsible for any resulting damages or data loss. In such situations, any re-installation, re-implementation, or post-incident remediation will be billed as a separate professional service.
+            6. **Transparency & Long-Term Value:**
+               By openly communicating these requirements and their implications during the pre-sales process, we help customers make informed decisions that safeguard their systems and data. This level of transparency fosters trust, enhances the long-term value of our solutions, and ensures smoother implementations.
+            """)
 
             mini_pacs_results = []
             mini_pacs_storage = []
@@ -917,6 +945,7 @@ def main():
                 **Security Considerations**  
                 - Enable secure boot and ensure regular security updates.  
                 - Implement role-based access controls for administrative tasks.  
+                - Site to Site VPN with the main site. 
 
                 **Internet Requirements**  
                 - Minimum Required  bandwidth: 30 Mbps  
@@ -930,71 +959,87 @@ def main():
                 gateway_specs = None
 
                 # Construct Licensing Notes Dynamically
-                licensing_notes = []
+            licensing_notes = []
 
-                # Windows Licensing Note
+            # Windows Licensing Note
+            licensing_notes.append(
+                "- **Windows Server Licensing:** Each VM requires an active Windows Server license. For environments with a Data Center license, these licenses may be unlimited. Verify the licensing model in use."
+            )
+
+            # Virtualization Licensing Note (HA-Specific)
+            if high_availability:
                 licensing_notes.append(
-                    "- **Windows Server Licensing:** Each VM requires an active Windows Server license. For environments with a Data Center license, these licenses may be unlimited. Verify the licensing model in use."
+                    "- **Virtualization Platform Licensing:** Ensure the selected platform (e.g., VMware or Hyper-V) supports High Availability features (e.g., vMotion, Live Migration)."
                 )
 
-                # Virtualization Licensing Note (HA-Specific)
-                if high_availability:
-                    licensing_notes.append(
-                        "- **Virtualization Platform Licensing:** Ensure the selected platform (e.g., VMware or Hyper-V) supports High Availability features (e.g., vMotion, Live Migration)."
-                    )
-
-                # Ubuntu Licensing Note (Only if Ubuntu VMs Exist)
-                if ubuntu_vms_count > 0:
-                    licensing_notes.append(
-                        "- **Ubuntu Licensing:** Ensure sufficient Ubuntu Server licenses are available for VMs running on Linux."
-                    )
-
-                # Antivirus Licensing Note
+            # Ubuntu Licensing Note (Only if Ubuntu VMs Exist)
+            if ubuntu_vms_count > 0:
                 licensing_notes.append(
-                    "- **Antivirus Licensing:** One license per VM is required unless otherwise specified."
+                    "- **Ubuntu Licensing:** Ensure sufficient Ubuntu Server licenses are available for VMs running on Linux."
                 )
 
-                # Backup Software Note
-                licensing_notes.append(
-                    "- **Backup Software:** Ensure compatibility with selected VMs and storage solutions."
-                )
+            # Antivirus Licensing Note
+            licensing_notes.append(
+                "- **Antivirus Licensing:** One license per VM is required unless otherwise specified."
+            )
 
-                # Combine Licensing Notes into a Single String
-                licensing_notes_text = "\n".join(licensing_notes)
+            # Backup Software Note
+            licensing_notes.append(
+                "- **Backup Software:** Ensure compatibility with selected VMs and storage solutions."
+            )
 
-                # Define the DMZ Recommendations
-                dmz_recommendations = ""
-                if ref_phys_external_access:
-                    dmz_recommendations += """
-                                - Referring Physician Portal VMs must be placed in a **DMZ (Demilitarized Zone) network** to isolate external access from internal hospital systems and enhance security.
-                            """
-                if patient_portal_external_access:
-                    dmz_recommendations += """
-                                - Patient Portal VMs must be placed in a **DMZ (Demilitarized Zone) network** to isolate external access from internal hospital systems and enhance security.
-                            """
+            # Combine Licensing Notes into a Single String
+            licensing_notes_text = "\n".join(licensing_notes)
 
-                # Define the Notes Dictionary
-                notes = {
-                    "licensing_notes": licensing_notes_text.strip(),  # Add dynamically constructed Licensing Notes
-                    "sizing_notes": """
-                                - Provided VM sizing of the Virtual servers will be scaled up horizontally or vertically based on the expected volume of data and number of CCUs.
-                                - SSD Datastore recommended for all OS Virtual disks of all VMs.
-                                - SSD recommended for the data drive of the Database Server.
-                                - It's recommended to have SSD storage for the short Term Storage (STS) that keep last 6 month of data for higher performance in data access.
-                            """,
-                    "technical_requirements": """
-                                - Provide remote access to the VMs (all VMs) for SW installation and configurations.
-                                - In case not using dongles, a connection from the VMs to (https://paxaeraultima.net:1435) for PaxeraHealth licensing except the database VM.
-                            """,
-                    "network_requirements": f"""
-                                - LAN bandwidth to be 1GB dedicated.
-                                - Paxera PACS VMs, Paxera Ultima Viewer VMs, Paxera Broker Integration VMs must be in same vLAN.
-                                - 1 Gb/s dedicated bandwidth across the vLAN with the maximum number of two network hops.
-                                - Latency less than 1ms.
-                                - Site to Site VPN with any other connected branch.
-                                {dmz_recommendations.strip()}
-                            """
-                }
+            # Define the DMZ Recommendations
+            dmz_recommendations = ""
+            if ref_phys_external_access:
+                dmz_recommendations += """
+                                                       - Referring Physician Portal VMs must be placed in a **DMZ (Demilitarized Zone) network** to isolate external access from internal hospital systems and enhance security.
+                                                   """
+            if patient_portal_external_access:
+                dmz_recommendations += """
+                                                       - Patient Portal VMs must be placed in a **DMZ (Demilitarized Zone) network** to isolate external access from internal hospital systems and enhance security.
+                                                   """
+
+            # Define the Notes Dictionary
+            notes = {
+                "licensing_notes": licensing_notes_text.strip(),  # Add dynamically constructed Licensing Notes
+                "sizing_notes": """
+                                               - Provided VM sizing of the Virtual servers will be scaled up horizontally or vertically based on the expected volume of data and number of CCUs.
+                                               - SSD Datastore recommended for all OS Virtual disks of all VMs.
+                                               - SSD recommended for the data drive of the Database Server.
+                                               - It's recommended to have SSD storage for the short Term Storage (STS) that keep last 6 month of data for higher performance in data access.
+                                           """,
+                "technical_requirements": """
+                                               - Provide remote access to the VMs (all VMs) for SW installation and configurations.
+                                               - In case not using dongles, a connection from the VMs to (https://paxaeraultima.net:1435) for PaxeraHealth licensing except the database VM.
+                                           """,
+                "network_requirements": f"""
+                                               - LAN bandwidth to be 1GB dedicated.
+                                               - Paxera PACS VMs, Paxera Ultima Viewer VMs, Paxera Broker Integration VMs must be in same vLAN.
+                                               - 1 Gb/s dedicated bandwidth across the vLAN with the maximum number of two network hops.
+                                               - Latency less than 1ms.
+                                               - Site to Site VPN with any other connected branch.
+                                               {dmz_recommendations.strip()}
+                                           """,
+                "minimum_requirements": """
+                                               - **Antivirus on All Backend Servers (Required):**
+                                                  Every server hosting our software components must have robust, up-to-date antivirus protection.
+                                               - **Firewall for External Publishing (Required):**
+                                                  Any system accessible from the internet—such as patient portals, referring physician portals, or tele-radiology services—must be protected by a properly configured firewall.
+                                               - **Backup Storage for Secondary Copies (Strongly Recommended):**
+                                                  Implementing a reliable backup strategy ensures a secondary copy of critical patient data and system files, enhancing business continuity and recovery capabilities.
+                                               - **Additional Security Measures (Recommended):**
+                                                  - Regular Security Updates & Patches: Keep all systems current with the latest patches.
+                                                  - Multi-Factor Authentication (MFA): Enforce MFA for all administrative and remote access accounts.
+                                                  - Network Segmentation & Isolation: Limit potential breaches by isolating critical systems.
+                                               - **Non-Compliance & Customer Responsibility:**
+                                                  Failure to adhere to these guidelines places customers at heightened risk for cyberattacks, including ransomware, data breaches, and service interruptions. If recommended security measures are not implemented, PaxeraHealth cannot be held responsible for any resulting damages or data loss. In such situations, any re-installation, re-implementation, or post-incident remediation will be billed as a separate professional service.
+                                               - **Transparency & Long-Term Value:**
+                                                  By openly communicating these requirements and their implications during the pre-sales process, we help customers make informed decisions that safeguard their systems and data. This level of transparency fosters trust, enhances the long-term value of our solutions, and ensures smoother implementations.
+                                           """
+            }
 
             ai_features = []
             if aidocker_included:

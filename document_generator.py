@@ -430,7 +430,7 @@ def generate_document_from_template(
         )
 
         # Add GPU details as bullet points with bold formatting
-        add_bullet_points_with_bold(doc, gpu_specs, "GPU Specifications", force_bullet=True)
+        add_bullet_points_with_bold(doc, gpu_specs, "", force_bullet=True)
 
     # Add Gateway Specifications (if provided)
     if gateway_specs:
@@ -444,11 +444,11 @@ def generate_document_from_template(
         add_paragraph_with_bold(doc, gateway_text)
 
         # Add Gateway details as bullet points using the existing utility function
-        add_bullet_points_with_bold(doc, gateway_specs, 'Recommended Specs ')
+        add_bullet_points_with_bold(doc, gateway_specs, "")
+    add_bullet_points_with_bold(doc, notes['minimum_requirements'], 'Minimum Requirements & Recommendations')
 
     # Workstation Specifications Section
     if diagnostic_specs is not None or viewing_specs is not None or ris_specs is not None:
-        doc.add_page_break()
         doc.add_heading('Workstation Specifications', level=2)
 
         # Add descriptive text for workstation specifications
