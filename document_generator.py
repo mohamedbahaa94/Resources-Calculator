@@ -75,47 +75,91 @@ def add_table_with_no_split(doc, df, title, description=None):
     tblPr.append(OxmlElement('w:tblInd'))  # Prevent splitting at the table level
 
     return table
-def generate_introduction(customer_name, high_availability, nas_backup_details, tier_2_disks, gpu_specs):
-    """
-    Generate a narrative-style introduction with spaced paragraphs based on selected features.
-    """
-    # Base introduction paragraph
-    intro_text = f"This document outlines the proposed IT infrastructure and hardware recommendations for **{customer_name}**. " \
-                 "The design prioritizes reliability, scalability, and efficiency to meet the operational requirements " \
-                 "of medical imaging systems in a modern healthcare environment."
 
-    # Initialize a list to hold all sections
-    sections = [intro_text]
+def generate_introduction(customer_name, high_availability, nas_backup_details, tier_3_disks, gpu_specs):
 
-    # Add sections dynamically based on selected features
-    if high_availability:
-        ha_text = "The proposed architecture includes a **High Availability (HA)** design to ensure continuous " \
-                  "operation and fault tolerance, minimizing system downtime and maximizing reliability."
-        sections.append(ha_text)
+        """
+        Generate a polished narrative-style introduction with refined text and conditional tiering logic
+        for PaxeraHealth imaging solutions, using bullet points for key features.
+        """
+        # Base introduction paragraph
+        intro_text = (
+            f"The **{customer_name} IT Infrastructure, Hardware, and Virtual Machine (VM) Design Recommendations** document provides a comprehensive blueprint "
+            "tailored for the deployment and scalability of **PaxeraHealth’s advanced medical imaging solutions**. "
+            "This document outlines the architectural design, hardware specifications, storage strategies, and virtual machine configurations "
+            "required to meet the operational and performance needs of healthcare facilities.\n\n"
+            "The design prioritizes:\n"
+            "• **Scalability:** Ensuring the system can grow seamlessly with increased demand.\n"
+            "• **Reliability:** Delivering continuous and uninterrupted services across critical infrastructure.\n"
+            "• **Performance Optimization:** Leveraging cutting-edge technology for optimal efficiency.\n"
+            "• **Robust Security Measures:** Safeguarding sensitive medical data with industry-standard protocols.\n"
+            "• **Compliance:** Adhering to international standards for healthcare IT infrastructure."
+        )
 
-    if tier_2_disks is not None:
-        tier_2_text = "To optimize performance, the design incorporates an intermediate tier of **high-speed storage**. " \
-                      "This tier is configured with SSD RAID 5, ensuring fast access to frequently accessed images " \
-                      "while maintaining data integrity and redundancy."
-        sections.append(tier_2_text)
+        # Initialize a list to hold all sections
+        sections = [intro_text]
 
-    if nas_backup_details:
-        nas_text = "For long-term data protection, a **NAS backup solution** is included. This solution provides " \
-                   "additional redundancy and facilitates data recovery in case of system failures or unexpected events."
-        sections.append(nas_text)
-    if gpu_specs:
-        gpu_text = "The design incorporates **powerful GPU-enabled hardware** to support advanced AI functionalities, " \
-                   "enhancing performance and enabling cutting-edge capabilities. These GPUs are optimized for resource-intensive " \
-                   "tasks, ensuring seamless operation of AI modules and analytics tools."
-        sections.append(gpu_text)
+        # Modular Features Section
+        feature_intro_text = "\n**Key Features of the Proposed Design Include:**"
+        sections.append(feature_intro_text)
 
-    # Conclude the introduction
-    conclusion_text = "These recommendations are tailored to support the specific operational needs of the customer, " \
-                      "ensuring an optimized and future-ready IT infrastructure."
-    sections.append(conclusion_text)
+        # High Availability or Single Server
+        if high_availability:
+            ha_text = (
+                "• **High Availability (HA):** Ensures uninterrupted operations, minimizes downtime, and supports fault tolerance, "
+                "providing continuous accessibility to critical medical imaging systems. "
+                "The design incorporates **automatic failover and failback capabilities**, allowing seamless transitions between primary and backup systems "
+                "to maintain service continuity during failures and ensure rapid recovery without manual intervention."
+            )
+            sections.append(ha_text)
+        else:
+            single_deployment_text = (
+                "• **Single Deployment Architecture:** Designed for environments where redundancy is not a primary requirement. "
+                "This deployment typically involves one or two servers operating without redundancy, while still delivering essential system performance "
+                "and supporting critical medical imaging workflows efficiently."
+            )
+            sections.append(single_deployment_text)
+        # GPU Specs
+        if gpu_specs:
+            gpu_text = (
+                "• **GPU-Powered Processing:** Enables advanced AI functionalities, optimized performance for resource-intensive tasks, "
+                "and innovative AI-driven analysis and visualization."
+            )
+            sections.append(gpu_text)
 
-    # Join all sections for the introduction
-    return sections
+        # Storage Logic: Include both Short-Term and Standard Tiering if tier_3_disks is enabled
+        if tier_3_disks != 0:
+            storage_text = (
+                "• **Three-Tier Storage Architecture:** The design incorporates a three-tier storage strategy to optimize imaging workflows and data lifecycle management. "
+                "Tier 1 utilizes **high-performance SSD storage** for OS and critical application data, ensuring rapid response times and system stability. "
+                "Tier 2 employs **flash storage for short-term imaging workflows**, providing fast access to frequently used imaging data. "
+                "Tier 3 leverages **cost-efficient HDD storage** for long-term archiving, ensuring scalability and reliable access to historical imaging data."
+            )
+        else:
+            storage_text = (
+                "• **Standard Two-Tier Storage Architecture:** The design features a two-tier storage approach for efficient imaging data management. "
+                "Tier 1 utilizes **high-performance SSD storage** for OS and critical application data, ensuring system responsiveness and reliability. "
+                "Tier 2 employs **cost-efficient HDD storage** for long-term archiving, offering scalability and secure storage for historical imaging data."
+            )
+        sections.append(storage_text)
+        # NAS Backup
+        if nas_backup_details:
+            nas_text = (
+                "• **NAS Backup Solution:** Provides long-term data protection, robust redundancy, and seamless recovery for critical medical imaging archives."
+            )
+            sections.append(nas_text)
+
+        # Conclude the introduction
+        conclusion_text = (
+            f"\nThis document serves as a reference for stakeholders, IT administrators, and decision-makers, providing clarity on system requirements, "
+            "deployment guidelines, and long-term operational strategies. Through this approach, **PaxeraHealth** aims to deliver not just a solution "
+            f"but a sustainable foundation for future healthcare innovations at **{customer_name}**."
+        )
+        sections.append(conclusion_text)
+
+        # Join all sections for the introduction
+        return sections
+
 
 # Add Introduction to Document
 def add_introduction_to_document(doc, intro_sections):
@@ -142,6 +186,50 @@ def get_binary_file_downloader_html(bin_file, file_label='File', customer_name='
     bin_str = bin_file.read()
     href = f'<a href="data:application/octet-stream;base64,{base64.b64encode(bin_str).decode()}" download="{file_name}">{file_label}</a>'
     return href
+
+def add_bullet_points_with_bold(doc, text, heading, bullet_symbol="•", force_bullet=False):
+    """
+    Adds a section with bullet points and handles bold text within the points.
+    Ensures consistent bullet style using a specified bullet symbol.
+    Removes leading symbols (like '-') from each line.
+    Skips bullets for lines that are entirely bold or start with bold text unless forced.
+    Skips adding the heading if it is empty or contains only whitespace.
+    """
+    # Add the section heading if it's not empty or whitespace
+    if heading.strip():
+        doc.add_heading(heading, level=3)
+
+    # Process each line in the text
+    for line in text.strip().split('\n'):
+        if line.strip():  # Ensure the line isn't empty
+            # Remove leading symbols like '-' or bullets
+            cleaned_line = line.strip().lstrip('-').strip()
+
+            # Check if the line starts with bold text
+            if not force_bullet and cleaned_line.startswith("**") and "**" in cleaned_line[2:]:
+                # Add a paragraph with bold formatting but no bullet
+                parts = cleaned_line.split("**")
+                paragraph = doc.add_paragraph()
+                for i, part in enumerate(parts):
+                    run = paragraph.add_run(f"{part.strip()} ")
+                    if i % 2 == 1:  # Odd indices are bold text
+                        run.bold = True
+            else:
+                # Add a new paragraph for the bullet point
+                paragraph = doc.add_paragraph()
+                paragraph_format = paragraph.paragraph_format
+                paragraph_format.space_after = Pt(6)  # Add space after each bullet point
+
+                # Insert the bullet symbol
+                run = paragraph.add_run(f'{bullet_symbol} ')
+                run.bold = False  # Bullet itself is not bold
+
+                # Split the cleaned line to handle bold formatting
+                parts = cleaned_line.split("**")  # Handle bold segments
+                for i, part in enumerate(parts):
+                    run = paragraph.add_run(f"{part.strip()} ")
+                    if i % 2 == 1:  # Odd indices are bold text
+                        run.bold = True
 
 
 def generate_document_from_template(
@@ -174,7 +262,13 @@ def generate_document_from_template(
     tier_2_disks=None,
     tier_2_disk_size=None,
     tier_3_disks=None,
-    tier_3_disk_size=None
+    tier_3_disk_size=None,
+    additional_vm_table=None,
+    additional_vm_notes=None,
+    general_notes=None,
+    additional_servers=None,
+    additional_vms=None,
+    additional_requirements_table=None
 ):
     """
     Generates a Word document based on the given inputs and template.
@@ -190,34 +284,81 @@ def generate_document_from_template(
 
     # Add introduction with bold formatting
     intro_text = generate_introduction(
-        customer_name, high_availability, nas_backup_details, tier_2_disks, gpu_specs)
+        customer_name, high_availability, nas_backup_details, tier_3_disks, gpu_specs)
 
     # Add Introduction to Document
     add_introduction_to_document(doc, intro_text)
 
     description_text = (
-        "The table below outlines the **key system inputs** and **design assumptions** that underpin "
-        "the proposed IT infrastructure. These inputs ensure scalability and reliability for the project."
+        "This section outlines the **client requirements** and **system assumptions** that serve as the foundation "
+        "for the proposed design. Key inputs such as study sizes, annual growth rates, and system capacity are "
+        "explicitly detailed to ensure alignment with the operational goals and scalability requirements of the client. "
+        "The design is crafted to address both current needs and future expansions, ensuring a robust and adaptable "
+        "infrastructure tailored to PaxeraHealth imaging solutions."
     )
 
     add_table_with_no_split(
         doc,
         input_table,
-        title='System Inputs and Assumptions',
+        title='Client Requirements and System Assumptions',
         description=description_text
     )
 
     # Utility to add tables
-
     if storage_table is not None:
+        # Base description
         storage_description = (
-            "The table below provides the **storage requirements** over the contract duration, "
-            "based on the specified inputs such as the number of studies, growth rate, and duration of the contract."
+            "The table below outlines the **Storage Architecture and Scalability Plan**, designed to meet the operational "
+            "and performance requirements of the system. The storage solution is categorized into distinct tiers to ensure "
+            "optimized data access and long-term reliability:\n\n"
         )
+
+        # Tier 1 Description
+        tier_1_description = (
+            "- **Tier 1: RAID 1 SSD (NVMe or M.2)**: High-speed, fault-tolerant storage dedicated to the operating system and database. "
+            "This tier ensures rapid access to critical system data and overall system stability.\n"
+        )
+
+        # Check for Tier 2: Fast Image Storage in the storage table
+        tier_2_short_term_exists = any("Tier 2: Fast Image Storage (SSD RAID 5)" in row for row in storage_table)
+
+        if tier_2_short_term_exists:
+            # Tier 2: Short-Term Storage
+            tier_2_description = (
+                "- **Tier 2: Fast Image Storage (RAID 5 SSD - SAS or NLSAS SSD)**: Optimized for fast retrieval of frequently accessed imaging data. "
+                "This tier is configured with high-performance SSDs to ensure rapid data access for recent studies, typically retained for 6 months or 1 year.\n"
+            )
+
+            # Tier 3: Long-Term Storage
+            tier_3_description = (
+                "- **Tier 3: Long-Term Storage (RAID 5 or 6 - SATA or NLSAS HDD)**: Scalable storage optimized for archiving historical imaging data. "
+                "This tier ensures data protection through redundancy and supports seamless access for low-frequency retrieval needs.\n\n"
+            )
+        else:
+            # If no short-term storage, rename long-term storage as Tier 2
+            tier_2_description = (
+                "- **Tier 2: Long-Term Storage (RAID 5 or 6 - SATA or NLSAS HDD)**: Scalable storage optimized for archiving historical imaging data. "
+                "This tier ensures data protection through redundancy and supports seamless access for low-frequency retrieval needs.\n\n"
+            )
+            tier_3_description = ""  # No Tier 3 if no short-term storage
+
+        # Compile descriptions
+        storage_description += tier_1_description
+        storage_description += tier_2_description
+        if tier_2_short_term_exists:
+            storage_description += tier_3_description
+
+        # Final note
+        storage_description += (
+            "This architecture balances performance, scalability, and cost-efficiency, ensuring seamless availability of imaging data to "
+            "support both operational and long-term requirements."
+        )
+
+        # Adding the updated table and description to the document
         add_table_with_no_split(
             doc,
             storage_table,
-            title='Detailed Storage Allocation',
+            title='Storage Architecture and Scalability Plan',
             description=storage_description
         )
 
@@ -228,189 +369,269 @@ def generate_document_from_template(
         results.at[results.index[-1], "Operating System"] = ""
         results.at[results.index[-1], results.columns[0]] = "Total"
 
-        # Define the description text for the VM table
-        gpu_text = "including AI capabilities." if gpu_specs else ""
+        # Core System VMs Section
+        gpu_text = "including **AI capabilities**." if gpu_specs else ""
         vm_description_text = (
-            f"The table below outlines the **Virtual Machine (VM) requirements** for the proposed solution. "
-            f"These recommendations ensure optimal performance, scalability, and support for advanced functionalities {gpu_text}"
+            f"The following table specifies the **Core Virtual Machine (VM) Configurations** required for **production workloads**. "
+            f"These configurations are designed to ensure **high performance**, **scalability**, and **reliability** for the core system {gpu_text}"
         )
-
-        # Use the add_table_with_no_split function to add the table
         add_table_with_no_split(
             doc,
             results,
-            title='VM Recommendations',
+            title='Core Virtual Machine Configurations',
             description=vm_description_text
         )
-    # Add Minimum vs Recommended Resources or Recommended Resources
-    # Dynamically set the section title and description
-    section_title = "Minimum vs. Recommended Resources" if project_grade == 1 else "Recommended Resources"
 
-    # Description based on the section title
-    if section_title == "Minimum vs. Recommended Resources":
-        resource_description_text = (
-            "The table below outlines the **minimum and recommended specifications** required to ensure "
-            "optimal performance for the system under varying load conditions."
+        # General Notes Section (formerly vCore Notes)
+        general_notes = [
+            "Each **vCore** represents a thread in the physical processor.",
+            "Physical processors typically support **two threads per core**, resulting in a **1:2 ratio** of physical cores to vCores.",
+            "This configuration ensures efficient utilization of processor resources, enabling **high performance** and **optimal workload distribution** in virtualized environments.",
+        ]
+        if gpu_specs:
+            # List of AI VM names to check in the results
+            ai_vm_names = [
+                "Organ Segmentator Docker",
+                "Lesion Segmentator 2D Docker",
+                "Lesion Segmentator 3D Docker",
+                "Speech-to-text Docker",
+                "AI ARK Manager",
+                "AI ARK LAB"
+            ]
+
+            # Extract AI VM names present in the results
+            ai_vms_present = [vm for vm in ai_vm_names if vm in results["VM Type"].values]
+
+            # Construct the note dynamically with highlighted AI VMs
+            if ai_vms_present:
+                general_notes.append(
+                    "The **Docker-based AI VMs** listed below are specifically designed for **AI processing tasks**, leveraging GPU acceleration for advanced functionalities:"
+                )
+                for ai_vm in ai_vms_present:
+                    general_notes.append(f"- {ai_vm}")
+
+        doc.add_heading('General Notes', level=3)
+        for note in general_notes:
+            add_bullet_points_with_bold(doc, note.strip(), "",force_bullet=True)
+
+        # Recommended Resources Section for Core VMs
+        recommended_resources_description = (
+            "The table below outlines the **recommended system specifications** for the core virtual machines. "
+            "These specifications are designed to ensure **reliable** and **efficient operation** of the production environment, "
+            "meeting **performance demands** and **scalability requirements**."
         )
-    else:
-        resource_description_text = (
-            "The table below outlines the **recommended specifications** necessary for the system to "
-            "operate efficiently and reliably."
+        add_table_with_no_split(
+            doc,
+            df_comparison,
+            title='Recommended Resources for Core VMs',
+            description=recommended_resources_description.strip()
         )
 
-    # Add the table with the description
-    add_table_with_no_split(
-        doc,
-        df_comparison,
-        title=section_title,
-        description=resource_description_text.strip()
-    )
+        # Auxiliary VMs Section (if applicable)
+        if additional_vm_table is not None:
+            auxiliary_vm_purpose = "management operations only" if not additional_vms else "management and testing/training operations"
+            additional_vm_description = (
+                f"The table below outlines the **Auxiliary Virtual Machine (VM) Configurations** tailored to handle **{auxiliary_vm_purpose}**. "
+                f"These VMs are **isolated** from the production environment to ensure **uninterrupted performance** and **flexibility**."
+            )
+            add_table_with_no_split(
+                doc,
+                additional_vm_table,
+                title='Auxiliary Virtual Machine Configurations',
+                description=additional_vm_description
+            )
 
-    def add_bullet_points_with_bold(doc, text, heading, bullet_symbol="•", force_bullet=False):
-        """
-        Adds a section with bullet points and handles bold text within the points.
-        Ensures consistent bullet style using a specified bullet symbol.
-        Removes leading symbols (like '-') from each line.
-        Skips bullets for lines that are entirely bold or start with bold text unless forced.
-        Skips adding the heading if it is empty or contains only whitespace.
-        """
-        # Add the section heading if it's not empty or whitespace
-        if heading.strip():
-            doc.add_heading(heading, level=3)
+        # Additional VM Notes
+        if additional_vms:
+            doc.add_heading('Additional VM Notes', level=3)
+            if isinstance(additional_vm_notes, list):
+                for note in additional_vm_notes:
+                    add_bullet_points_with_bold(doc, note.strip(), "")
+            elif isinstance(additional_vm_notes, dict):
+                for note in additional_vm_notes.values():
+                    add_bullet_points_with_bold(doc, note.strip(), "")
 
-        # Process each line in the text
-        for line in text.strip().split('\n'):
-            if line.strip():  # Ensure the line isn't empty
-                # Remove leading symbols like '-' or bullets
-                cleaned_line = line.strip().lstrip('-').strip()
-
-                # Check if the line starts with bold text
-                if not force_bullet and cleaned_line.startswith("**") and "**" in cleaned_line[2:]:
-                    # Add a paragraph with bold formatting but no bullet
-                    parts = cleaned_line.split("**")
-                    paragraph = doc.add_paragraph()
-                    for i, part in enumerate(parts):
-                        run = paragraph.add_run(part.strip())
-                        if i % 2 == 1:  # Odd indices are bold text
-                            run.bold = True
-                else:
-                    # Add a new paragraph for the bullet point
-                    paragraph = doc.add_paragraph()
-                    paragraph_format = paragraph.paragraph_format
-                    paragraph_format.space_after = Pt(6)  # Add space after each bullet point
-
-                    # Insert the bullet symbol
-                    run = paragraph.add_run(f'{bullet_symbol} ')
-                    run.bold = False  # Bullet itself is not bold
-
-                    # Split the cleaned line to handle bold formatting
-                    parts = cleaned_line.split("**")  # Handle bold segments
-                    for i, part in enumerate(parts):
-                        run = paragraph.add_run(part.strip())
-                        if i % 2 == 1:  # Odd indices are bold text
-                            run.bold = True
+        # Recommended Resources for Auxiliary VMs Section
+        if additional_requirements_table is not None:
+            additional_vm_description = (
+                "The table below outlines the **recommended system specifications** for the auxiliary virtual machines. "
+                "These specifications ensure that sufficient resources are allocated to auxiliary tasks without impacting core production workloads."
+            )
+            add_table_with_no_split(
+                doc,
+                additional_requirements_table,
+                title='Recommended Resources for Auxiliary VMs',
+                description=additional_vm_description.strip()
+            )
 
     # Add Physical System Design
     if physical_design:
         # Add main heading for Physical System Design
         doc.add_heading('Physical System Design', level=3)
 
-        # Add server design description as a paragraph
-        server_design_text = (
-            "The system is designed with a **High Availability (HA)** configuration, ensuring fault tolerance and "
-            "minimizing system downtime. This setup includes multiple servers working together to handle workloads "
-            "seamlessly in the event of a hardware failure."
-        ) if high_availability else (
-            "The system is designed with a **single-server** configuration, optimized for cost-effectiveness while "
-            "meeting the operational needs of the medical imaging infrastructure. "
-            "This setup is ideal for environments with limited redundancy requirements."
-        )
-        add_paragraph_with_bold(doc, server_design_text)
+        # Determine the server setup and structure the introduction
+        if high_availability:
+            server_setup_text = (
+                "- **Server Configuration**: The system is designed with **multiple servers** in a **High Availability (HA)** setup. "
+                "These servers are connected to a **shared DAS/SAN (Direct-Attached Storage/Storage Area Network)** to ensure fault tolerance, scalability, and continuous operation."
+            )
+        else:
+            server_setup_text = (
+                "- **Server Configuration**: The system uses a **standard server** with **built-in storage**, optimized for cost-effectiveness while maintaining reliability."
+            )
 
-        # Process the physical design details
+        # Include GPUs if selected
+        gpu_text = "- **GPU-Enabled Servers**: Designed to support advanced AI functionalities such as segmentators and speech-to-text modules." if gpu_specs else ""
+
+        # Include additional VMs dynamically based on selection
+        additional_vm_text = ""
+        if additional_vms:
+            vm_purpose = []
+            if any(vm["VM Type"] == "Test Environment VM (Ultima, PACS, Broker)" for vm in additional_vms):
+                vm_purpose.append("testing and training")
+            if any(vm["VM Type"] == "Management VM (Backup, Antivirus, vCenter)" for vm in additional_vms):
+                vm_purpose.append("management")
+            additional_vm_text = f"- **Additional Servers**: Configured to support {', '.join(vm_purpose)} operations. These servers ensure flexibility and uninterrupted production workloads."
+
+        # AI Modules based on selection
+        selected_ai_modules = [
+            "Organ Segmentator Docker",
+            "Lesion Segmentator 2D Docker",
+            "Lesion Segmentator 3D Docker",
+            "Speech-to-text Docker",
+            "AI ARK Manager",
+            "AI ARK LAB"
+        ]
+        ai_modules_in_use = [module for module in selected_ai_modules if module in physical_design]
+        ai_text = (
+            "- **AI Modules**: The system includes the following AI components: "
+            + ", ".join(f"**{module}**" for module in ai_modules_in_use)
+            if ai_modules_in_use
+            else ""
+        )
+
+        # Include NAS backup solution if selected
+        nas_text = "- **Backup Solution**: Includes a **NAS backup system** to provide redundancy and long-term data protection." if nas_backup_details else ""
+
+        # Combine all system components into structured bullet points
+        system_components = [
+            server_setup_text,
+            gpu_text,
+            additional_vm_text,
+            ai_text,
+            nas_text,
+        ]
+        system_components = [comp for comp in system_components if comp]  # Filter out empty lines
+
+        # Add structured introduction for system setup
+        add_paragraph_with_bold(doc, "The proposed system comprises the following hardware setup:")
+        for component in system_components:
+            add_bullet_points_with_bold(doc, component.strip(), "", force_bullet=True)
+
+        # Add adaptability note
+        adaptability_note = (
+            "This hardware setup can be deployed in the client's data center, provided equivalent resources and functionalities are allocated "
+            "to maintain similar performance and operational reliability."
+        )
+        add_paragraph_with_bold(doc, adaptability_note)
+
+        # Process Physical Design Details
         if physical_design.strip():
             design_lines = physical_design.strip().split("\n")
             if design_lines:
-                # Use the first line as a subheading (e.g., "Standard Server Design")
-                subheading = design_lines[0].strip().rstrip(":")  # Remove trailing colon for cleaner heading
-
-                # Format the remaining lines using the `add_bullet_points_with_bold` function
+                subheading = design_lines[0].strip().rstrip(":")
                 remaining_lines = "\n".join(design_lines[1:])
                 add_bullet_points_with_bold(doc, remaining_lines, subheading)
 
-    # Add Storage Design
-    doc.add_heading('Storage Design', level=3)
+        # Add Storage Design
 
-    # Add descriptive text for storage design
-    storage_design_text = (
-        "The storage system is designed with **DAS/SAN (Direct-Attached Storage/Storage Area Network)** configurations "
-        "to provide high availability and scalability for large-scale medical imaging data. This design supports "
-        "redundant connections and fault tolerance to ensure continuous data availability."
-    ) if high_availability else (
-        "The storage system uses **built-in storage**, providing cost-effective and efficient data management for "
-        "environments with single-server configurations. This design is tailored for smaller-scale operations."
-    )
-    add_paragraph_with_bold(doc, storage_design_text)
+        # Add Storage Design
+        doc.add_heading('Storage Design', level=3)
 
-    # Add Storage Tiers
-    tier_1_text = f"""
-    **Tier 1**: OS & DB (SSD RAID 1)
-    SSD Drives: 2x {raid_1_storage_tb:.2f} TB
-    """
-
-    if tier_2_disks is not None and tier_2_disk_size is not None:
-        # Add Tier 2 and Tier 3 as separate sections
-        tier_2_text = f"""
-        **Tier 2**: Fast Image Storage (SSD RAID 5)
-        SSD Drives: {tier_2_disks}x {tier_2_disk_size:.2f} TB
-        """
-        tier_3_text = f"""
-        **Tier 3**: Long-Term Storage (HDD RAID 5)
-        HDD Drives: {tier_3_disks}x {tier_3_disk_size:.2f} TB
-        """
-        add_bullet_points_with_bold(doc, tier_1_text + tier_2_text + tier_3_text, "")
-    else:
-        # Promote Tier 3 to Tier 2 if Tier 2 doesn't exist
-        if tier_3_disks is not None and tier_3_disk_size is not None:
-            tier_2_promoted_text = f"""
-            **Tier 2**: Long-Term Storage (HDD RAID 5)
-            HDD Drives: {tier_3_disks}x {tier_3_disk_size:.2f} TB
-            """
-            add_bullet_points_with_bold(doc, tier_1_text + tier_2_promoted_text, "")
-        else:
-            # Handle cases where no Tier 2 or Tier 3 details are provided
-            add_bullet_points_with_bold(doc, tier_1_text, "")
-
-    # Add NAS Backup Details
-    if nas_backup_details:
-        # Add main heading for NAS Backup Storage
-        doc.add_heading('Backup Storage (NAS)', level=3)
-
-        # Add descriptive text for NAS storage
-        nas_backup_text = (
-            "The NAS backup solution is designed to provide additional redundancy and facilitate seamless data recovery. "
-            "This backup configuration ensures long-term protection for critical medical imaging data, safeguarding against "
-            "unexpected system failures or data loss."
+        # Storage Type
+        storage_design_text = (
+            "The storage system leverages **DAS/SAN (Direct-Attached Storage/Storage Area Network)** configurations to support high availability and scalability. "
+            "This design is tailored to accommodate large-scale medical imaging workloads while ensuring redundancy and continuous access to critical data."
+        ) if high_availability else (
+            "The storage system uses **built-in storage** with RAID configurations to provide reliable and cost-effective solutions for smaller-scale operations. "
+            "This design focuses on meeting the operational needs of single-server environments."
         )
-        # Add descriptive text for NAS backup
-        add_paragraph_with_bold(doc, nas_backup_text)
+        add_paragraph_with_bold(doc, storage_design_text)
 
-        # Add subheading for NAS technical specifications and process bullets in one go
-        backup_lines = nas_backup_details.strip().split("\n")
-        if len(backup_lines) > 1:
-            # Extract the heading manually
+        # Add Storage Tiers
+        tier_1_text = f"""
+          **Tier 1**: OS & DB (SSD RAID 1)
+          SSD Drives: 2x {raid_1_storage_tb:.2f} TB
+          """
 
-            # Process the rest of the NAS details as bullet points
-            remaining_lines = "\n".join(backup_lines[1:])
-            add_bullet_points_with_bold(doc, remaining_lines,"",force_bullet=True)# No additional heading called here
+        if tier_2_disks is not None and tier_2_disk_size is not None and tier_3_disk_size is not 0:
+            # Add Tier 2 and Tier 3 as separate sections
+            tier_2_text = f"""
+              **Tier 2**: Fast Image Storage (SSD RAID 5)
+              SSD Drives: {tier_2_disks}x {tier_2_disk_size:.2f} TB
+              """
+            tier_3_text = f"""
+              **Tier 3**: Long-Term Storage (HDD RAID 5)
+              HDD Drives: {tier_3_disks}x {tier_3_disk_size:.2f} TB
+              """
+            add_bullet_points_with_bold(doc, tier_1_text + tier_2_text + tier_3_text, "")
+        else:
+            # Promote Tier 3 to Tier 2 if Tier 2 doesn't exist
+            if tier_3_disks is  0 and tier_3_disk_size is  0:
+                tier_2_promoted_text = f"""
+                  **Tier 2**: Long-Term Storage (HDD RAID 5)
+                  HDD Drives: {tier_2_disks}x {tier_2_disk_size:.2f} TB
+                  """
+                add_bullet_points_with_bold(doc, tier_1_text + tier_2_promoted_text, "")
+            else:
+                # Handle cases where no Tier 2 or Tier 3 details are provided
+                add_bullet_points_with_bold(doc, tier_1_text, "")
 
-    # Add Third Party Licenses with No Split
+        # Add Test Server Details
+        if additional_vms:
+            doc.add_heading('Test and Management Servers', level=3)
+            for server in additional_servers:
+                server_details = f"""
+                **Server:**
+                - **Processors**: {server['Processors']}
+                - **Total CPU**: {server['Total Cores']} Cores / {server['Total Threads']} Threads
+                - **RAM**: {server['RAM']} GB
+                """
+                add_bullet_points_with_bold(doc, server_details.strip(), "", force_bullet=True)
+        # Add NAS Backup Details
+        if nas_backup_details:
+            doc.add_heading('Backup Storage (NAS)', level=3)
+            nas_backup_text = (
+                "The NAS backup solution is designed to provide additional redundancy and facilitate seamless data recovery. "
+                "This backup configuration ensures long-term protection for critical medical imaging data, safeguarding against "
+                "unexpected system failures or data loss."
+            )
+            add_paragraph_with_bold(doc, nas_backup_text)
+
+            backup_lines = nas_backup_details.strip().split("\n")
+            if len(backup_lines) > 1:
+                remaining_lines = "\n".join(backup_lines[1:])
+                add_bullet_points_with_bold(doc, remaining_lines, "", force_bullet=True)
+
+        # Add NAS Backup Details
+        if nas_backup_details:
+            doc.add_heading('Backup Storage (NAS)', level=3)
+            nas_backup_text = (
+                "The NAS backup solution is designed to provide additional redundancy and facilitate seamless data recovery. "
+                "This backup configuration ensures long-term protection for critical medical imaging data, safeguarding against "
+                "unexpected system failures or data loss."
+            )
+            add_paragraph_with_bold(doc, nas_backup_text)
+
+            backup_lines = nas_backup_details.strip().split("\n")
+            if len(backup_lines) > 1:
+                remaining_lines = "\n".join(backup_lines[1:])
+                add_bullet_points_with_bold(doc, remaining_lines, "", force_bullet=True)
     description_text = (
-        "The table below lists the third-party licenses required to support the proposed infrastructure, "
-        "ensuring compatibility and reliability."
-    )
+                    "The table below lists the third-party licenses required to support the proposed infrastructure, "
+                    "ensuring compatibility and reliability."
+     )
     add_table_with_no_split(doc, third_party_licenses, title='Third Party Licenses', description=description_text)
-
     # Add Notes Section
     add_bullet_points_with_bold(doc, notes['licensing_notes'], 'Licensing Notes',force_bullet=True)
     add_bullet_points_with_bold(doc, notes['sizing_notes'], 'Sizing Notes')
@@ -445,7 +666,6 @@ def generate_document_from_template(
 
         # Add Gateway details as bullet points using the existing utility function
         add_bullet_points_with_bold(doc, gateway_specs, "")
-    add_bullet_points_with_bold(doc, notes['minimum_requirements'], 'Minimum Requirements & Recommendations')
 
     # Workstation Specifications Section
     if diagnostic_specs is not None or viewing_specs is not None or ris_specs is not None:
@@ -472,6 +692,7 @@ def generate_document_from_template(
         if ris_specs is not None:
             add_paragraph_with_bold(doc, "**RIS Workstation Specifications**:")
             add_table_with_no_split(doc, ris_specs, title='RIS Workstation')
+    add_bullet_points_with_bold(doc, notes['minimum_requirements'], ' Requirements & Recommendations')
 
     # Save to a buffer and return
     buffer = BytesIO()

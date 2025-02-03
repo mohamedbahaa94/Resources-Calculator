@@ -16,28 +16,35 @@ def add_server(servers, remaining_threads, remaining_ram, max_threads, max_ram):
 
     print(f"Entering add_server with remaining_threads={remaining_threads} and remaining_ram={remaining_ram}")
 
-    threads_to_allocate = min(remaining_threads, max_threads)
-    ram_to_allocate = min(remaining_ram, max_ram)
+    # Calculate the number of servers needed
+    num_servers_threads = math.ceil(remaining_threads / max_threads)
+    num_servers_ram = math.ceil(remaining_ram / max_ram)
+    num_servers = max(num_servers_threads, num_servers_ram)
 
-    if threads_to_allocate % 2 != 0:
-        threads_to_allocate -= 1
+    # Uniform allocation for threads and RAM
+    threads_per_server = math.ceil(remaining_threads / num_servers)
+    ram_per_server = math.ceil(remaining_ram / num_servers)
 
-    if threads_to_allocate > 128:
+    # Ensure threads are divisible by 2
+    threads_per_server -= threads_per_server % 2
+
+    # Allocate resources for the current server
+    if threads_per_server > 128:
         processors_to_allocate = 'Dual'
-        cores_per_processor = min(math.ceil(threads_to_allocate / 4), 64)
+        cores_per_processor = min(math.ceil(threads_per_server / 4), 64)
         cores_per_processor = cores_per_processor if cores_per_processor % 2 == 0 else cores_per_processor + 1
         total_cores = cores_per_processor * 2
         total_threads = total_cores * 2
     else:
-        if threads_to_allocate > 20:
+        if threads_per_server > 20:
             processors_to_allocate = 'Dual'
-            cores_per_processor = min(math.ceil(threads_to_allocate / 4), 64)
+            cores_per_processor = min(math.ceil(threads_per_server / 4), 64)
             cores_per_processor = cores_per_processor if cores_per_processor % 2 == 0 else cores_per_processor + 1
             total_cores = cores_per_processor * 2
             total_threads = total_cores * 2
         else:
             processors_to_allocate = 'Single'
-            cores_per_processor = min(math.ceil(threads_to_allocate / 2), 64)
+            cores_per_processor = min(math.ceil(threads_per_server / 2), 64)
             cores_per_processor = cores_per_processor if cores_per_processor % 2 == 0 else cores_per_processor + 1
             total_cores = cores_per_processor
             total_threads = total_cores * 2
@@ -48,30 +55,47 @@ def add_server(servers, remaining_threads, remaining_ram, max_threads, max_ram):
         "Total Threads": total_threads,
         "Cores per Processor": cores_per_processor,
         "Threads per Processor": total_threads // (2 if processors_to_allocate == 'Dual' else 1),
-        "RAM": ram_to_allocate
+        "RAM": ram_per_server
     })
 
     logging.info(
-        f"Allocated Server: Processors={processors_to_allocate}, Total Cores={total_cores}, Total Threads={total_threads}, RAM={ram_to_allocate} GB")
+        f"Allocated Server: Processors={processors_to_allocate}, Total Cores={total_cores}, Total Threads={total_threads}, RAM={ram_per_server} GB")
     print(
-        f"Allocated Server: Processors={processors_to_allocate}, Total Cores={total_cores}, Total Threads={total_threads}, RAM={ram_to_allocate} GB")
+        f"Allocated Server: Processors={processors_to_allocate}, Total Cores={total_cores}, Total Threads={total_threads}, RAM={ram_per_server} GB")
 
-    return remaining_threads - total_threads, remaining_ram - ram_to_allocate
+    # Update remaining resources
+    remaining_threads -= threads_per_server
+    remaining_ram -= ram_per_server
 
+    # Ensure no negative values
+    remaining_threads = max(remaining_threads, 0)
+    remaining_ram = max(remaining_ram, 0)
 
-def format_server_specs(servers):
+    return remaining_threads, remaining_ram
+
+def format_server_specs(servers, base_name="Server"):
+    """
+    Format server specifications for display with dynamic naming.
+
+    Args:
+        servers (list): List of server dictionaries containing specs.
+        base_name (str): Base name for the servers (e.g., "Test Server", "Management Server").
+
+    Returns:
+        str: Formatted server specifications as a string.
+    """
     server_specs = ""
     for i, server in enumerate(servers):
+        # Dynamically assign server name
+        server_name = f"{base_name} {i + 1}"
         server_specs += f"""
-        **Server {i + 1}:**
+        **{server_name}:**
           - Processors: {server['Processors']}
           - Total CPU: {server['Total Cores']} Cores / {server['Total Threads']} Threads
           - Per Processor: {server['Cores per Processor']} Cores / {server['Threads per Processor']} Threads
           - RAM: {server['RAM']} GB
         """
     return server_specs
-
-
 def calculate_raid5_disks(usable_storage_tb, min_disks=3, max_disks=24):
     """
     Calculate the optimal RAID 5 disk configuration for the given usable storage requirements.
@@ -85,7 +109,7 @@ def calculate_raid5_disks(usable_storage_tb, min_disks=3, max_disks=24):
         (int, float): A tuple containing the total number of disks and the size of each disk in TB.
                       Returns (None, None) if no valid configuration is found.
     """
-    available_disk_sizes_tb = sorted([ 4, 8, 12, 16, 20, 22], reverse=True)
+    available_disk_sizes_tb = sorted([ 1.5,2.4,3,4, 8, 12, 16, 20, 22], reverse=True)
 
     best_total_disks = None
     best_disk_size = None
@@ -317,11 +341,18 @@ def main():
             disabled=(num_studies == 0)
         )
 
+    # High Availability Selection Section
+    with st.expander("High Availability Design Options"):
+        # General HA Design
+        high_availability = st.checkbox("Enable High Availability on Hardware Level (Host, Server, Storage)",
+                                        value=False)
+        high_availability_vms = st.checkbox("Enable High Availability on VM Level", value=False)
+
     # Hardware and Design Features Section
     with st.expander("Hardware and Design Features"):
-        high_availability = st.checkbox("High Availability HW Design Required", value=False)
         training_vm_included = st.checkbox("Include Testing/Training VM", value=False)
 
+        # NAS Backup Options
         use_nas_backup = st.checkbox("Include NAS Storage for Backup", value=False)
         if use_nas_backup:
             # Redundancy factor input
@@ -403,6 +434,7 @@ def main():
             logging.info(f"VM Requirements Calculation completed in {time.time() - start_calc_time:.2f} seconds")
 
             if not results.empty:
+                # 🛡️ Set default Operating System and Other Software
                 results["Operating System"] = "Windows Server 2019 or Higher"
                 results["Other Software"] = ""
 
@@ -411,56 +443,25 @@ def main():
                         results.at[index, "Other Software"] = sql_license
                     if "DBServer" in index:
                         results.at[index, "Other Software"] = sql_license
-                    for index in results.index:
-                        # Update for specific AI Segmentation Dockers
-                        if any(name in index for name in
-                               ["OrganSegmentator", "LesionSegmentator2D", "LesionSegmentator3D", "SpeechToText"]):
-                            results.at[index, "Operating System"] = "Ubuntu 20.4"
-                            results.at[
-                                index, "Other Software"
-                            ] = "Nvidia Driver version 450.80.02 or higher\nNvidia driver to support CUDA version 11.4 or higher"
 
-                        # Update for ARK Lab
-                        if "AIARKLAB" in index:
-                            results.at[index, "Operating System"] = "Ubuntu 20.4"
-                            results.at[
-                                index, "Other Software"
-                            ] = "Nvidia Driver version 450.80.02 or higher\nNvidia driver to support CUDA version 11.4 or higher"
+                    # Update for specific AI Segmentation Dockers
+                    if any(name in index for name in
+                           ["OrganSegmentator", "LesionSegmentator2D", "LesionSegmentator3D", "SpeechToText"]):
+                        results.at[index, "Operating System"] = "Ubuntu 20.4"
+                        results.at[
+                            index, "Other Software"] = "Nvidia Driver version 450.80.02 or higher\nNvidia driver to support CUDA version 11.4 or higher"
 
-                        # Special case for ARK Manager
-                        if "AIARKManager" in index:
-                            results.at[index, "Operating System"] = "Windows Server 2019 or Higher"
-                            results.at[index, "Other Software"] = ""
+                    # Update for ARK Lab
+                    if "AIARKLAB" in index:
+                        results.at[index, "Operating System"] = "Ubuntu 20.4"
+                        results.at[
+                            index, "Other Software"] = "Nvidia Driver version 450.80.02 or higher\nNvidia driver to support CUDA version 11.4 or higher"
 
-            # Add Test Environment VM
-            if training_vm_included:
-                test_vm_specs = {
-                    "VM Type": "Test Environment VM",
-                    "vCores": 0,
-                    "RAM (GB)": 0,
-                    "Storage (GB)": 150
-                }
-                if sql_license == "SQL Express":
-                    test_vm_specs["vCores"] = 8
-                    test_vm_specs["RAM (GB)"] = 16
-                elif sql_license == "SQL Standard":
-                    test_vm_specs["vCores"] = 10
-                    test_vm_specs["RAM (GB)"] = 32
-                elif sql_license == "SQL Enterprise":
-                    test_vm_specs["vCores"] = 12
-                    test_vm_specs["RAM (GB)"] = 64
+                    # Special case for ARK Manager
+                    if "AIARKManager" in index:
+                        results.at[index, "Operating System"] = "Windows Server 2019 or Higher"
+                        results.at[index, "Other Software"] = ""
 
-                test_vm_name = "Test Environment VM (Ultima, PACS, Broker)"
-
-            # Add Management VM for High Availability
-            if high_availability:
-                management_vm_specs = {
-                    "VM Type": "Management VM",
-                    "vCores": 8,
-                    "RAM (GB)": 32 if sql_license in ["SQL Express", "SQL Standard"] else 64,
-                    "Storage (GB)": 150
-                }
-                management_vm_name = "Management VM (Backup, Antivirus, vCenter)"
             display_results = results.drop(["RAID 1 (SSD)", "RAID 5 (HDD)"])
 
             last_index = display_results.tail(1).index
@@ -472,8 +473,102 @@ def main():
                 lambda x: ['background-color: yellow' if 'Test Environment VM' in x.name else '' for i in x],
                 axis=1).format(precision=2))
 
-            # Calculate requirements for grade 1 (minimum) and grade 3 (recommended)
-            # Calculate VM Requirements (Include AI VMs in calculations)
+            # 🛠️ Prepare Additional VMs
+            additional_vms = []
+
+            # Add Test Environment VM
+            if training_vm_included:
+                test_vm_specs = {
+                    "VM Type": "Test Environment VM (Ultima, PACS, Broker)",
+                    "vCores": 0,
+                    "RAM (GB)": 0,
+                    "Storage (GB)": 150,
+                    "RAID 5 Storage (TB)": 0
+                }
+                if sql_license == "SQL Express":
+                    test_vm_specs["vCores"] = 8
+                    test_vm_specs["RAM (GB)"] = 16
+                    test_vm_specs["RAID 5 Storage (TB)"] = 1.0
+                elif sql_license == "SQL Standard":
+                    test_vm_specs["vCores"] = 10
+                    test_vm_specs["RAM (GB)"] = 32
+                    test_vm_specs["RAID 5 Storage (TB)"] = 5.0
+                elif sql_license == "SQL Enterprise":
+                    test_vm_specs["vCores"] = 12
+                    test_vm_specs["RAM (GB)"] = 64
+                    test_vm_specs["RAID 5 Storage (TB)"] = 10.0
+
+                additional_vms.append(test_vm_specs)
+
+            # Add Management VM for High Availability
+            if high_availability:
+                management_vm_specs = {
+                    "VM Type": "Management VM (Backup, Antivirus, vCenter)",
+                    "vCores": 8,
+                    "RAM (GB)": 32 if sql_license in ["SQL Express", "SQL Standard"] else 64,
+                    "Storage (GB)": 150,
+                    "RAID 5 Storage (TB)": 0
+                }
+                additional_vms.append(management_vm_specs)
+
+            # Prepare Additional VMs Table
+            if additional_vms:
+                additional_vms_table = pd.DataFrame(additional_vms)
+
+                if "VM Type" in additional_vms_table.columns:
+                    if "Total" in additional_vms_table["VM Type"].values:
+                        total_row_index = additional_vms_table[additional_vms_table["VM Type"] == "Total"].index[0]
+                        additional_vms_table.at[total_row_index, "Operating System"] = ""
+                        additional_vms_table.at[total_row_index, "Other Software"] = ""
+            else:
+                additional_vms_table = None
+
+
+    
+            additional_vm_notes = []
+            # Display Additional VMs Table and Notes
+            if additional_vms:
+                st.subheader("Additional VMs:")
+                additional_vms_table = pd.DataFrame(additional_vms)
+                st.table(additional_vms_table.style.format(precision=2))
+
+                # Display Notes for Additional VMs
+                st.subheader("Additional VM Notes:")
+
+                # Test Environment VM Note
+                if any(vm["VM Type"] == "Test Environment VM (Ultima, PACS, Broker)" for vm in additional_vms):
+                    additional_vm_notes.append("""
+                - **Test Environment VM:**  
+                  - It is recommended to host this VM on a **separate hardware pool** dedicated for testing and training purposes.  
+                    This ensures that production workloads are not impacted by testing or training activities.
+                    """)
+
+                # Management VM Note
+                if any(vm["VM Type"] == "Management VM (Backup, Antivirus, vCenter)" for vm in additional_vms):
+                    additional_vm_notes.append("""
+                - **Management VM:**  
+                  - Hosted on a **dedicated hardware pool** to ensure exclusive resources are allocated for management tasks, minimizing any impact on production workloads.  
+                  - Alternatively, deployed as a **Distributed Management Node Allocation**, where management tasks are shared across production servers with **High Availability (HA)** configured.  
+                    This ensures seamless continuity in the event of a server failure, as the remaining server(s) automatically take over the management operations.
+                    """)
+
+                # Display notes only if they exist
+                if additional_vm_notes:
+                    st.markdown("\n".join(additional_vm_notes))
+
+            # Display General Notes
+            st.subheader("General Notes:")
+            general_notes = """
+            - **Virtual Core (vCore) Definition:**
+                - Each **vCore** corresponds to a single thread within the physical processor.
+                - Physical processors typically support **two threads per core**, meaning the number of vCores is twice the number of physical cores.
+                - This 1:2 ratio between physical cores and vCores ensures optimal utilization of processor resources, enabling better performance and efficient workload distribution in virtualized environments.
+            """
+            st.markdown(general_notes)
+
+            # Total Requirements for Additional VMs
+
+            # Calculate VM Requirements (Grade 1 and Grade 3)
             results_grade1, _, first_year_storage_raid5_grade1, total_image_storage_raid5_grade1, total_vcpu_grade1, total_ram_grade1, total_storage_grade1 = calculate_vm_requirements(
                 num_studies=num_studies,
                 pacs_ccu=pacs_ccu,
@@ -489,7 +584,7 @@ def main():
                 breakdown_per_modality=breakdown_per_modality,
                 aidocker_included=aidocker_included,
                 ark_included=ark_included,
-                u9_ai_features=[  # Updated: Dynamic U9.AI feature list
+                u9_ai_features=[
                     "Organ Segmentator" if organ_segmentator else None,
                     "Lesion Segmentator 2D" if lesion_segmentator_2d else None,
                     "Lesion Segmentator 3D" if lesion_segmentator_3d else None,
@@ -519,7 +614,7 @@ def main():
                 breakdown_per_modality=breakdown_per_modality,
                 aidocker_included=aidocker_included,
                 ark_included=ark_included,
-                u9_ai_features=[  # Updated: Dynamic U9.AI feature list
+                u9_ai_features=[
                     "Organ Segmentator" if organ_segmentator else None,
                     "Lesion Segmentator 2D" if lesion_segmentator_2d else None,
                     "Lesion Segmentator 3D" if lesion_segmentator_3d else None,
@@ -535,57 +630,161 @@ def main():
             )
 
             # Define Storage Values for Display
-            raid_1_storage_tb = results_grade3.loc["RAID 1 (SSD)", "Storage (GB)"] / 1024
+            raid_1_storage_tb_g3 = results_grade3.loc["RAID 1 (SSD)", "Storage (GB)"] / 1024
             raid_5_storage_tb = total_image_storage_raid5_grade3 / 1024  # Total HDD storage for full duration
-
-            # Storage Design Table
+            raid_1_storage = results.loc["RAID 1 (SSD)", "Storage (GB)"]  # Tier 1 storage
+            raid_1_storage_tb = raid_1_storage / 1024  # Convert to TB
             st.subheader("Storage Requirements:")
+
+            # Initialize storage values
             years = range(1, contract_duration + 1)
             tier_1_storage = raid_1_storage_tb  # Constant for Tier 1
-            tier_3_storage = [round(total_image_storage_raid5_grade3 / 1024, 2)] * len(
-                years)  # Long-term storage (cumulative)
+            tier_2_storage = None  # Initialize Tier 2 storage as None
+            tier_3_storage = []  # Initialize Tier 3 storage list for accumulation
 
+            # Calculate the storage for the first year (initial storage)
+            initial_year_storage = (num_studies * study_size_mb) / 1024 / 1024  # Convert to TB
+
+            if include_fast_tier_storage:
+                # Determine storage multiplier based on selection (6 months = 0.5, 1 year = 1.0)
+                fast_storage_multiplier = 0.5 if fast_tier_duration == "6 Months" else 1.0
+
+                tier_2_storage = []  # Initialize Tier 2 storage as an empty list
+                for year in years:
+                    year_storage = initial_year_storage * (1 + annual_growth_rate / 100) ** (year - 1)
+                    tier_2_storage.append(round(year_storage * fast_storage_multiplier, 2))
+                tier_2_label = f"Tier 2: Fast Image Storage (SSD RAID 5) ({fast_tier_duration})"
+
+                # Calculate cumulative Tier 3 storage for each year
+                for year in years:
+                    current_year_storage = initial_year_storage * (1 + annual_growth_rate / 100) ** (year - 1)
+                    if year == 1:
+                        tier_3_storage.append(round(current_year_storage, 2))  # First year storage
+                    else:
+                        cumulative_storage = tier_3_storage[-1] + current_year_storage
+                        tier_3_storage.append(round(cumulative_storage, 2))
+            else:
+                # No intermediate Tier 2; promote Tier 3 to Tier 2
+                tier_2_label = None  # No Tier 2 storage
+                # Initialize and calculate Tier 3 storage
+                for year in years:
+                    current_year_storage = initial_year_storage * (1 + annual_growth_rate / 100) ** (year - 1)
+                    if year == 1:
+                        tier_3_storage.append(round(current_year_storage, 2))  # First year storage
+                    else:
+                        cumulative_storage = tier_3_storage[-1] + current_year_storage
+                        tier_3_storage.append(round(cumulative_storage, 2))
+
+            # Use the final Tier 3 storage value in the comparison tables
+            final_tier_3_storage = tier_3_storage[-1]
+
+            # Prepare storage data dictionary
             storage_data = {
                 "Year": [f"Year {year}" for year in years],
                 "Tier 1: OS & DB (SSD RAID 1)": [round(tier_1_storage, 2)] * len(years),
-                "Tier 3: Long-Term Storage (HDD RAID 5)": tier_3_storage,
             }
 
-            # Create the Storage Table
+            if tier_2_storage:  # Add Tier 2 only if it's present
+                storage_data[tier_2_label] = tier_2_storage
+
+            # Add Tier 3 to the storage table
+            storage_data["Tier 3: Long-Term Storage (HDD RAID 5)"] = tier_3_storage
+
+            # Create and display the Storage Table
             storage_table = pd.DataFrame(storage_data).reset_index(drop=True)
             st.table(storage_table.style.format(precision=2))
+
             # Resource Comparison Table
+            # Minimum vs Recommended Resources for Grade 1
             if project_grade == 1:  # Minimum vs Recommended Resources for Grade 1
                 comparison_data = {
                     "Specification": ["Total vCores", "Total RAM (GB)", "RAID 1 (SSD) (TB)",
                                       "RAID 5 (HDD) Full Duration (TB)"],
-                    "Minimum Specs": [round(total_vcpu_grade1, 2), round(total_ram_grade1, 2),
-                                      round(raid_1_storage_tb, 2), round(total_image_storage_raid5_grade1 / 1024, 2)],
-                    "Recommended Specs": [round(total_vcpu_grade3, 2), round(total_ram_grade3, 2),
-                                          round(raid_1_storage_tb, 2),
-                                          round(total_image_storage_raid5_grade3 / 1024, 2)]
+                    "Minimum Specs": [
+                        round(total_vcpu_grade1, 1),
+                        round(total_ram_grade1, 1),
+                        round(raid_1_storage_tb, 1),
+                        round(final_tier_3_storage, 1),  # Use final Tier 3 storage
+                    ],
+                    "Recommended Specs": [
+                        round(total_vcpu_grade3, 1),
+                        round(total_ram_grade3, 1),
+                        round(raid_1_storage_tb_g3, 1),
+                        round(final_tier_3_storage, 1),  # Use final Tier 3 storage
+                    ],
                 }
                 df_comparison = pd.DataFrame(comparison_data)
-
                 st.subheader("Minimum vs. Recommended Resources:")
-                st.dataframe(df_comparison.style.format(precision=2))
+                st.table(
+                    df_comparison.style.set_table_styles(
+                        [
+                            {"selector": "thead th", "props": [("font-size", "16px"), ("font-weight", "bold")]},
+                            {"selector": "tbody td", "props": [("font-size", "14px"), ("text-align", "center")]},
+                            {"selector": "tbody tr:nth-child(even)", "props": [("background-color", "#f9f9f9")]},
+                            {"selector": "tbody tr:hover", "props": [("background-color", "#f1f1f1")]},
+                        ]
+                    ).format(precision=1)
+                )
 
+            # Recommended Resources Table for Grade 2 or 3
             elif project_grade in [2, 3]:  # Only Recommended Resources for Grade 2 or 3
                 recommended_data = {
                     "Specification": ["Total vCores", "Total RAM (GB)", "RAID 1 (SSD) (TB)",
                                       "RAID 5 (HDD) Full Duration (TB)"],
-                    "Recommended Specs": [round(total_vcpu_grade3, 2), round(total_ram_grade3, 2),
-                                          round(raid_1_storage_tb, 2),
-                                          round(total_image_storage_raid5_grade3 / 1024, 2)]
+                    "Recommended Specs": [
+                        round(total_vcpu_grade3, 1),
+                        round(total_ram_grade3, 1),
+                        round(raid_1_storage_tb_g3, 1),
+                        round(final_tier_3_storage, 1),  # Use final Tier 3 storage
+                    ],
                 }
                 df_comparison = pd.DataFrame(recommended_data)
+                st.subheader("Recommended Resources:")
+                st.table(
+                    df_comparison.style.set_table_styles(
+                        [
+                            {"selector": "thead th", "props": [("font-size", "16px"), ("font-weight", "bold")]},
+                            {"selector": "tbody td", "props": [("font-size", "14px"), ("text-align", "center")]},
+                            {"selector": "tbody tr:nth-child(even)", "props": [("background-color", "#f9f9f9")]},
+                            {"selector": "tbody tr:hover", "props": [("background-color", "#f1f1f1")]},
+                        ]
+                    ).format(precision=1)
+                )
 
-                st.subheader(f"Recommended Resources:")
-                st.dataframe(df_comparison.style.format(precision=2))
+            # Calculate Additional VM Requirements
+            if additional_vms:
+                # Calculate totals for additional VMs
+                total_additional_vcpu = sum(vm.get("vCores", 0) for vm in additional_vms)
+                total_additional_ram = sum(vm.get("RAM (GB)", 0) for vm in additional_vms)
+                total_additional_ssd = sum(vm.get("Storage (GB)", 0) for vm in additional_vms) / 1024  # Convert to TB
+                total_additional_hdd = sum(vm.get("RAID 5 Storage (TB)", 0) for vm in additional_vms)  # HDD in TB
+
+                # Define the additional requirements table
+                additional_requirements_data = {
+                    "Specification": ["Total vCores", "Total RAM (GB)", "Total SSD Storage (TB)",
+                                      "Total HDD Storage (TB)"],
+                    "Requirements": [
+                        total_additional_vcpu,
+                        total_additional_ram,
+                        round(total_additional_ssd, 1),  # Round to 1 decimal point for consistency
+                        round(total_additional_hdd, 1),
+                    ],
+                }
+                additional_requirements_table = pd.DataFrame(additional_requirements_data)
+
+                # Display in Streamlit (if applicable)
+                st.subheader("Requirements for Additional VMs:")
+                st.table(additional_requirements_table.style.format(precision=1))
+            else:
+                additional_requirements_table = None  # Ensure it is set to None if no additional VMs
 
             logging.info("Starting Physical System Allocation")
             total_vcpu = results.loc["Total", "vCores"]
             total_ram = results.loc["Total", "RAM (GB)"]
+
+            # Include additional VMs in the physical hardware calculations
+            total_vcpu += sum(vm.get("vCores", 0) for vm in additional_vms)
+            total_ram += sum(vm.get("RAM (GB)", 0) for vm in additional_vms)
 
             max_threads_per_server = 128
             max_ram_per_server = 512
@@ -593,25 +792,63 @@ def main():
             # Section: Physical System Design
             st.subheader("Physical System Design")
 
-            # Server Design
+            # Server Design for Production Servers
             servers = []
             if high_availability:
                 logging.info("Calculating high availability resources")
-                total_vcpu_ha = int(total_vcpu * 0.75)
-                total_ram_ha = int(total_ram * 0.75)
+                print("Length of servers:", len(servers))
 
-                remaining_threads, remaining_ram = total_vcpu_ha, total_ram_ha
-                while remaining_threads > 0 or remaining_ram > 0:
-                    if remaining_ram == 0:
-                        logging.warning("No remaining RAM to allocate. Exiting loop.")
-                        break
-                    remaining_threads, remaining_ram = add_server(
-                        servers, remaining_threads, remaining_ram, max_threads_per_server, max_ram_per_server
-                    )
+                # Check the number of servers in normal design
+                if total_vcpu > max_threads_per_server or total_ram > max_ram_per_server:
+                    logging.info("Total workload exceeds max server specs. Using dynamic HA allocation logic.")
 
-                # Duplicate the servers for high availability
-                ha_servers = servers + servers
-                server_specs = format_server_specs(ha_servers)
+                    # Scale total resources for Active-Active HA
+                    total_vcpu_ha = int(total_vcpu * 1.5)
+                    total_ram_ha = int(total_ram * 1.5)
+
+                    remaining_threads, remaining_ram = total_vcpu_ha, total_ram_ha
+                    while remaining_threads > 0 or remaining_ram > 0:
+                        if remaining_ram == 0:
+                            logging.warning("No remaining RAM to allocate. Exiting loop.")
+                            break
+                        remaining_threads, remaining_ram = add_server(
+                            servers,
+                            remaining_threads,
+                            remaining_ram,
+                            max_threads_per_server,
+                            max_ram_per_server
+                        )
+                else:
+                    logging.info("Total workload is within max server specs. Enforcing two servers for HA redundancy.")
+
+                    # Allocate two servers with 75% of total resources
+                    threads_per_server = int(total_vcpu * 0.75)
+                    ram_per_server = int(total_ram * 0.75)
+
+                    # Ensure threads are divisible by 2
+                    if threads_per_server % 2 != 0:
+                        threads_per_server -= 1
+
+                    # Clear any existing servers
+                    servers.clear()
+
+                    # Add two servers with adjusted resources
+                    for _ in range(2):
+                        remaining_threads, remaining_ram = add_server(
+                            servers,
+                            threads_per_server,
+                            ram_per_server,
+                            max_threads_per_server,
+                            max_ram_per_server
+                        )
+
+                    # Fallback to ensure exactly two servers exist
+                    while len(servers) < 2:
+                        servers.append(
+                            servers[0].copy())  # Duplicate the first server if fewer than 2 servers are added
+
+                # Format and display servers
+                server_specs = format_server_specs(servers, base_name="Production Server")
                 st.markdown("### High Availability Server Design")
                 st.markdown(server_specs)
 
@@ -630,30 +867,80 @@ def main():
                         servers, remaining_threads, remaining_ram, max_threads_per_server, avg_ram_per_server
                     )
 
-                server_specs = format_server_specs(servers)
+                server_specs = format_server_specs(servers, base_name="Production Server")
                 st.markdown("### Standard Server Design")
                 st.markdown(server_specs)
 
                 logging.info("Standard server allocation complete")
+            additional_servers = []
+            # Additional VMs on Separate Hardware Pool
+            if additional_vms:
+                st.markdown("### Additional VM Hardware Design")
+
+                additional_total_vcpu = sum(vm.get("vCores", 0) for vm in additional_vms)
+                additional_total_ram = sum(vm.get("RAM (GB)", 0) for vm in additional_vms)
+                additional_total_ssd = sum(
+                    vm.get("Storage (GB)", 0) for vm in additional_vms) / 1024  # Convert SSD to TB
+                additional_total_hdd = sum(vm.get("RAID 5 Storage (TB)", 0) for vm in additional_vms)  # HDD in TB
+                # Determine base name for additional servers
+                if len(additional_vms) == 1:
+                    additional_vm_type = additional_vms[0]["VM Type"]
+                    if "Test" in additional_vm_type:
+                        base_name = "Test Server"
+                    elif "Management" in additional_vm_type:
+                        base_name = "Management Server"
+                elif any("Management" in vm["VM Type"] for vm in additional_vms):
+                    base_name = "Test and Management Server"
+                else:
+                    base_name = "Additional Server"
+
+                # Calculate physical servers for additional VMs
+                remaining_threads, remaining_ram = additional_total_vcpu, additional_total_ram
+                while remaining_threads > 0 or remaining_ram > 0:
+                    if remaining_ram == 0:
+                        logging.warning(f"No remaining RAM to allocate for additional VMs. Exiting loop.")
+                        break
+                    remaining_threads, remaining_ram = add_server(
+                        additional_servers, remaining_threads, remaining_ram, max_threads_per_server, max_ram_per_server
+                    )
+
+                additional_server_specs = format_server_specs(additional_servers, base_name=base_name)
+
+                # Display Additional VM Hardware Design
+                st.markdown(additional_server_specs)
+
+                # Display storage details under hardware design
+                st.markdown(f"""
+                **Storage Configuration for Additional Pool:**
+                - **SSD Storage:** {round(additional_total_ssd * 1024, 2)} GB
+                - **HDD Storage (RAID 5):** {round(additional_total_hdd, 2)} TB
+                """)
+
             # Storage Details
             st.markdown("### Storage Design")
-            raid_1_storage = results.loc["RAID 1 (SSD)", "Storage (GB)"]  # Tier 1 storage
 
             # Tier 1: OS & DB (SSD RAID 1)
+            raid_1_storage = results.loc["RAID 1 (SSD)", "Storage (GB)"]  # Tier 1 storage
             raid_1_storage_tb = raid_1_storage / 1024  # Convert to TB
 
-            # Tier 2: Fast Image Storage (SSD RAID 5)
+            # Tier 2: Fast Image Storage (SSD RAID 5) or Long-Term Storage
             if include_fast_tier_storage:
                 intermediate_tier_multiplier = 0.5 if fast_tier_duration == "6 Months" else 1.0
                 intermediate_tier_storage_tb = math.ceil(
-                    first_year_storage_raid5 * intermediate_tier_multiplier / 1024)  # Convert to TB
+                    first_year_storage_raid5 * intermediate_tier_multiplier / 1024
+                )  # Convert to TB
                 tier_2_disks, tier_2_disk_size = calculate_raid5_disks(intermediate_tier_storage_tb)
+                tier_2_label = "Tier 2: Fast Image Storage (SSD RAID 5)"
             else:
-                tier_2_disks, tier_2_disk_size = None, None
+                tier_2_disks, tier_2_disk_size = calculate_raid5_disks(final_tier_3_storage)
+                tier_2_label = "Tier 2: Long-Term Storage (HDD RAID 5)"
+                tier_3_disks, tier_3_disk_size = 0, 0  # No separate Tier 3
 
-            # Tier 3: Long-Term Storage (HDD RAID 5)
-            usable_storage_tb = round_to_nearest_divisible_by_two(total_image_storage_raid5 / 1024)
-            tier_3_disks, tier_3_disk_size = calculate_raid5_disks(usable_storage_tb)
+            # Tier 3: Long-Term Storage (HDD RAID 5) if Tier 2 is SSD RAID 5
+            if include_fast_tier_storage:
+                tier_3_disks, tier_3_disk_size = calculate_raid5_disks(final_tier_3_storage)
+            else:
+                tier_3_disks, tier_3_disk_size = 0, 0
 
             # Determine storage type
             if len(servers) == 1 and not high_availability:
@@ -669,24 +956,27 @@ def main():
             - SSD Drives: 2x {raid_1_storage_tb:.2f} TB
             """
 
-            # Add Tier 2 or promote Tier 3 to Tier 2
+            # Add Tier 2 Storage
             if tier_2_disks and tier_2_disk_size:
                 storage_details += f"""
-            **Tier 2: Fast Image Storage (SSD RAID 5):**
-            - SSD Drives: {tier_2_disks}x {tier_2_disk_size:.2f} TB
-            """
-            elif tier_3_disks and tier_3_disk_size:
-                # Rename Tier 3 as Tier 2 if Tier 2 is not available
-                storage_details += f"""
-            **Tier 2: Long-Term Storage (HDD RAID 5):**
-            - HDD Drives: {tier_3_disks}x {tier_3_disk_size:.2f} TB
-            """
-            else:
-                storage_details += """
-            **Tier 2: Long-Term Storage (HDD RAID 5):**
-            Details not available.
+            **{tier_2_label}:**
+            - Drives: {tier_2_disks}x {tier_2_disk_size:.2f} TB
             """
 
+            # Add Tier 3 Storage (if applicable)
+            if tier_3_disks and tier_3_disk_size:
+                storage_details += f"""
+            **Tier 3: Long-Term Storage (HDD RAID 5):**
+            - HDD Drives: {tier_3_disks}x {tier_3_disk_size:.2f} TB
+            """
+
+            # Handle cases where no details are available
+            if not tier_2_disks and not tier_3_disks:
+                storage_details += """
+            **Details not available for some tiers.**
+            """
+
+            # Display Storage Details
             st.markdown(storage_details)
 
             # Backup Storage (NAS)
@@ -695,12 +985,10 @@ def main():
                 nas_storage_gb = round(
                     (total_image_storage_raid5 * nas_redundancy_factor * nas_backup_years) / contract_duration)
                 nas_storage_tb = nas_storage_gb / 1024  # Convert to TB
-
+                st.markdown("#### Backup Storage (NAS):")
                 # Display the calculated NAS storage
-                st.write(f"Estimated NAS Storage Required: {nas_storage_tb:.2f} TB")
 
                 nas_backup_string = f"""
-                **Backup Storage (NAS):**
                 - **NAS Storage:** {nas_storage_tb:.2f} TB
                 - **Redundancy Factor Applied:** {nas_redundancy_factor:.1f}
                 - **Backup Duration:** {nas_backup_years} years
@@ -1199,6 +1487,7 @@ def main():
                     })  # Set "Item" as the index
                     st.markdown("### RIS Workstation")
                     st.dataframe(ris_specs)
+
         if high_availability:
             physical_design_string = "High Availability Server Design:\n" + server_specs
         else:
@@ -1220,13 +1509,13 @@ def main():
             input_table=input_values,
             customer_name=customer_name,
             high_availability=high_availability,
-            server_specs=server_specs,
+            server_specs=server_specs,  # Updated production server specs
             gpu_specs=gpu_specs,
             first_year_storage_raid5=first_year_storage_raid5,
             total_image_storage_raid5=total_image_storage_raid5,
             num_studies=num_studies,
             storage_title=storage_type,
-            shared_storage=shared_storage,  # Reintroduced shared storage
+            shared_storage=shared_storage,
             raid_1_storage_tb=raid_1_storage_tb,
             gateway_specs=gateway_specs,
             diagnostic_specs=diagnostic_specs,
@@ -1239,7 +1528,13 @@ def main():
             tier_2_disks=tier_2_disks,
             tier_2_disk_size=tier_2_disk_size,
             tier_3_disks=tier_3_disks,
-            tier_3_disk_size=tier_3_disk_size
+            tier_3_disk_size=tier_3_disk_size,
+            additional_vm_table=additional_vms_table,  # Pass additional VMs as a DataFrame
+            additional_vm_notes=additional_vm_notes,  # Notes for additional VMs
+            general_notes=general_notes,  # General notes applicable to all VMs
+            additional_servers=additional_servers,
+            additional_vms=additional_vms,
+            additional_requirements_table=additional_requirements_table  # Pass additional requirements table
         )
 
         download_link = get_binary_file_downloader_html(

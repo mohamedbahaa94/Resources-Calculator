@@ -6,8 +6,10 @@
   <component name="ChangeListManager">
     <list default="true" id="0e414598-b33c-4c0e-82ac-f495982fe622" name="Changes" comment="newer">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/assets/templates/Temp.docx" beforeDir="false" afterPath="$PROJECT_DIR$/assets/templates/Temp.docx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/document_generator.py" beforeDir="false" afterPath="$PROJECT_DIR$/document_generator.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/vm_calculations.py" beforeDir="false" afterPath="$PROJECT_DIR$/vm_calculations.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -131,6 +133,26 @@
       <workItem from="1733834592262" duration="1281000" />
       <workItem from="1733914112628" duration="6469000" />
       <workItem from="1733960822919" duration="1152000" />
+      <workItem from="1734004379607" duration="19172000" />
+      <workItem from="1734091217625" duration="15190000" />
+      <workItem from="1734111072782" duration="3104000" />
+      <workItem from="1734177572575" duration="5087000" />
+      <workItem from="1734258678454" duration="3346000" />
+      <workItem from="1734337768379" duration="9794000" />
+      <workItem from="1734858320108" duration="1567000" />
+      <workItem from="1734875983375" duration="13346000" />
+      <workItem from="1735551639611" duration="8023000" />
+      <workItem from="1736671221209" duration="8000" />
+      <workItem from="1736671250402" duration="8275000" />
+      <workItem from="1736684023269" duration="6056000" />
+      <workItem from="1736847601878" duration="13000" />
+      <workItem from="1736935122246" duration="4951000" />
+      <workItem from="1737023441005" duration="3779000" />
+      <workItem from="1737373304288" duration="2966000" />
+      <workItem from="1737629628697" duration="3592000" />
+      <workItem from="1737881919429" duration="4315000" />
+      <workItem from="1738263090149" duration="594000" />
+      <workItem from="1738516171510" duration="1138000" />
     </task>
     <task id="LOCAL-00001" summary="new">
       <option name="closed" value="true" />

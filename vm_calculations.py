@@ -322,39 +322,61 @@ def calculate_vm_requirements(
         vms_needed["PaxeraUltima"] = 0
         vms_needed["PaxeraRIS"] = 0
 
+    # Broker VM Logic with Project Grades
+    # Broker VM Logic with Project Grades
     if broker_required or (pacs_ccu > 0 and ris_ccu > 0):
-        if broker_required:
-            modalities = num_machines
-        elif pacs_ccu > 0 and ris_ccu > 0:
-            modalities = num_machines
+        # Determine the number of modalities
+        modalities = num_machines if broker_required else num_machines
+
+        # Calculate the number of Broker VMs (1 Broker per 10 modalities)
         broker_vms = (modalities + 9) // 10
+
         for i in range(broker_vms):
             vm_name = f"PaxeraBroker{i + 1:02d}"
-            if broker_level == "HL7 Unidirectional" or broker_level == "HL7 Bidirectional":
-                if broker_level == "HL7 Unidirectional":
-                    vm_type = "PaxeraBroker HL7 Unidirectional"
-                    vcores = 8
-                    ram_gb = 16
-                else:
-                    vm_type = "PaxeraBroker HL7 Bidirectional"
-                    vcores = 10
-                    ram_gb = 24
+
+            # Define VM specs based on broker level
+            if broker_level == "HL7 Unidirectional":
+                vm_type = "PaxeraBroker HL7 Unidirectional"
+                vcores = 8
+                ram_gb = 16
+            elif broker_level == "HL7 Bidirectional":
+                vm_type = "PaxeraBroker HL7 Bidirectional"
+                vcores = 10
+                ram_gb = 24
             else:
                 vm_type = "PaxeraBroker WL"
                 vcores = 6
                 ram_gb = 12
-            vm_requirements[vm_name] = {
-                "VM Type": vm_type,
-                "vCores": vcores,
-                "RAM (GB)": ram_gb,
-                "Storage (GB)": 150,
-            }
 
-    if not ref_phys_external_access and ref_phys_ccu > 0:
-        ref_phys_vm_resources = calculate_referring_physician_resources(ref_phys_ccu)
-        max_vcores_per_vm = 12  # Example threshold for vCores
-        max_ram_per_vm = 64  # Example threshold for RAM in GB
+            storage_gb = 150  # Fixed storage per broker
 
+            if project_grade in [1, 2] and i == 0 and "DBServer01" in vm_requirements:
+                # Combine first broker with DBServer in Grade 1 & 2
+                db_vcores = vm_requirements["DBServer01"]["vCores"]
+                db_ram = vm_requirements["DBServer01"]["RAM (GB)"]
+                db_storage = vm_requirements["DBServer01"]["Storage (GB)"]
+
+                combined_vcores = min(12, 2 * round((db_vcores + vcores) / 1.2 / 2))
+                combined_ram = min(64, 2 * round((db_ram + ram_gb) / 1.2 / 2))
+                combined_storage = db_storage + storage_gb
+
+                # Update DBServer to include broker resources with explicit broker type
+                vm_requirements["DBServer01"] = {
+                    "VM Type": f"DBServer/Broker ({vm_type})",  # Explicitly include the Broker type
+                    "vCores": combined_vcores,
+                    "RAM (GB)": combined_ram,
+                    "Storage (GB)": combined_storage,
+                }
+            else:
+                # Add as standalone Broker VM
+                vm_requirements[vm_name] = {
+                    "VM Type": vm_type,
+                    "vCores": vcores,
+                    "RAM (GB)": ram_gb,
+                    "Storage (GB)": storage_gb,
+                }
+
+    # Referring Physician VM Logic
     if not ref_phys_external_access and ref_phys_ccu > 0:
         ref_phys_vm_resources = calculate_referring_physician_resources(ref_phys_ccu)
         max_vcores_per_vm = 12  # Example threshold for vCores
@@ -362,16 +384,13 @@ def calculate_vm_requirements(
 
         for num_vms, ram_gb, vcores in ref_phys_vm_resources:
             if combine_pacs_ris:
-                # Handle combined PaxeraUltima/RIS VM
                 if "PaxeraUltima/RIS01" in vm_requirements:
-                    # Check if adding exceeds limits
                     current_vcores = vm_requirements["PaxeraUltima/RIS01"]["vCores"]
                     current_ram = vm_requirements["PaxeraUltima/RIS01"]["RAM (GB)"]
                     new_vcores = current_vcores + vcores
                     new_ram = current_ram + ram_gb
 
                     if new_vcores > max_vcores_per_vm or new_ram > max_ram_per_vm:
-                        # Add a new VM if limits are exceeded
                         new_vm_name = f"PaxeraUltima/RIS{len(vm_requirements) + 1:02d}"
                         vm_requirements[new_vm_name] = {
                             "VM Type": "PaxeraUltima/RIS",
@@ -380,119 +399,50 @@ def calculate_vm_requirements(
                             "Storage (GB)": 150,
                         }
                     else:
-                        # Add resources to the existing VM
                         vm_requirements["PaxeraUltima/RIS01"]["vCores"] = new_vcores
                         vm_requirements["PaxeraUltima/RIS01"]["RAM (GB)"] = new_ram
                 else:
-                    # Create the first combined VM if it doesn't exist
                     vm_requirements["PaxeraUltima/RIS01"] = {
                         "VM Type": "PaxeraUltima/RIS",
                         "vCores": vcores,
                         "RAM (GB)": ram_gb,
                         "Storage (GB)": 150,
                     }
-            else:
-                # Handle standalone PaxeraUltima VM
-                if "PaxeraUltima01" in vm_requirements:
-                    # Check if adding exceeds limits
-                    current_vcores = vm_requirements["PaxeraUltima01"]["vCores"]
-                    current_ram = vm_requirements["PaxeraUltima01"]["RAM (GB)"]
-                    new_vcores = current_vcores + vcores
-                    new_ram = current_ram + ram_gb
 
-                    if new_vcores > max_vcores_per_vm or new_ram > max_ram_per_vm:
-                        # Add a new VM if limits are exceeded
-                        new_vm_name = f"PaxeraUltima{len(vm_requirements) + 1:02d}"
-                        vm_requirements[new_vm_name] = {
-                            "VM Type": "PaxeraUltima",
-                            "vCores": vcores,
-                            "RAM (GB)": ram_gb,
-                            "Storage (GB)": 150,
-                        }
-                    else:
-                        # Add resources to the existing VM
-                        vm_requirements["PaxeraUltima01"]["vCores"] = new_vcores
-                        vm_requirements["PaxeraUltima01"]["RAM (GB)"] = new_ram
-                else:
-                    # Create the first PaxeraUltima VM if it doesn't exist
-                    vm_requirements["PaxeraUltima01"] = {
-                        "VM Type": "PaxeraUltima",
-                        "vCores": vcores,
-                        "RAM (GB)": ram_gb,
-                        "Storage (GB)": 150,
-                    }
-        # Combine PaxeraUltima/PaxeraRIS and PaxeraUltima/RIS into one
-        if combine_pacs_ris and pacs_ccu > 0 and ris_ccu > 0:
-            # Initialize a combined VM configuration
-            combined_vm = {"VM Type": "PaxeraUltima/PaxeraRIS", "vCores": 0, "RAM (GB)": 0, "Storage (GB)": 0}
-
-            # Aggregate resources for PaxeraUltima/PaxeraRIS and PaxeraUltima/RIS
-            for vm_name in list(vm_requirements.keys()):  # Use list to avoid modifying the dictionary during iteration
-                if "PaxeraUltima/PaxeraRIS" in vm_name or "PaxeraUltima/RIS" in vm_name:
-                    combined_vm["vCores"] += vm_requirements[vm_name]["vCores"]
-                    combined_vm["RAM (GB)"] += vm_requirements[vm_name]["RAM (GB)"]
-                    combined_vm["Storage (GB)"] = max(combined_vm["Storage (GB)"],
-                                                      vm_requirements[vm_name]["Storage (GB)"])
-                    del vm_requirements[vm_name]  # Remove the original VM entry
-
-            # Add the combined VM back to the requirements
-            vm_requirements["PaxeraUltima/RIS"] = combined_vm
-
+    # Project Grades Logic
     if project_grade == 1:
         if "PaxeraPACS01" in vm_requirements and "PaxeraUltima01" in vm_requirements:
             combined_vm = {
                 "VM Type": "PaxeraPACS/PaxeraUltima",
-                "vCores": 2 * round((vm_requirements["PaxeraPACS01"]["vCores"] + vm_requirements["PaxeraUltima01"]["vCores"]) / 1.2 / 2),
-                "RAM (GB)": 2 * round((vm_requirements["PaxeraPACS01"]["RAM (GB)"] + vm_requirements["PaxeraUltima01"]["RAM (GB)"]) / 1.2 / 2),
+                "vCores": 2 * round((vm_requirements["PaxeraPACS01"]["vCores"] + vm_requirements["PaxeraUltima01"][
+                    "vCores"]) / 1.2 / 2),
+                "RAM (GB)": 2 * round((vm_requirements["PaxeraPACS01"]["RAM (GB)"] + vm_requirements["PaxeraUltima01"][
+                    "RAM (GB)"]) / 1.2 / 2),
                 "Storage (GB)": vm_requirements["PaxeraPACS01"]["Storage (GB)"]
             }
-            if not ref_phys_external_access and "Referring Physician01" in vm_requirements:
-                combined_vm["vCores"] = 2 * round((combined_vm["vCores"] + vm_requirements["Referring Physician01"]["vCores"]) / 1.2 / 2)
-                combined_vm["RAM (GB)"] = 2 * round((combined_vm["RAM (GB)"] + vm_requirements["Referring Physician01"]["RAM (GB)"]) / 1.2 / 2)
-                del vm_requirements["Referring Physician01"]
             vm_requirements["PaxeraPACS01"] = combined_vm
             del vm_requirements["PaxeraUltima01"]
 
-        if broker_required:
-            for i in range(broker_vms):
-                if "DBServer01" in vm_requirements:
-                    vm_name = f"PaxeraBroker{i + 1:02d}"
-                    combined_vm = {
-                        "VM Type": f"DBServer/{vm_type}",
-                        "vCores": min(12, 2 * round((vm_requirements["DBServer01"]["vCores"] + vm_requirements[vm_name]["vCores"]) / 1.2 / 2)),
-                        "RAM (GB)": min(64, 2 * round((vm_requirements["DBServer01"]["RAM (GB)"] + vm_requirements[vm_name]["RAM (GB)"]) / 1.2 / 2)),
-                        "Storage (GB)": vm_requirements["DBServer01"]["Storage (GB)"]
-                    }
-                    vm_requirements["DBServer01"] = combined_vm
-                    del vm_requirements[vm_name]
-
     elif project_grade == 2:
-        if broker_required:
-            for i in range(broker_vms):
-                if "DBServer01" in vm_requirements:
-                    vm_name = f"PaxeraBroker{i + 1:02d}"
-                    combined_vm = {
-                        "VM Type": f"DBServer/{vm_type}",
-                        "vCores": min(12, 2 * round((vm_requirements["DBServer01"]["vCores"] + vm_requirements[vm_name]["vCores"]) / 1.5 / 2)),
-                        "RAM (GB)": min(64, 2 * round((vm_requirements["DBServer01"]["RAM (GB)"] + vm_requirements[vm_name]["RAM (GB)"]) / 1.5 / 2)),
-                        "Storage (GB)": vm_requirements["DBServer01"]["Storage (GB)"] + vm_requirements[vm_name]["Storage (GB)"]
-                    }
-                    vm_requirements["DBServer01"] = combined_vm
-                    del vm_requirements[vm_name]
+        if broker_required and "DBServer01" in vm_requirements:
+            combined_vm = {
+                "VM Type": f"DBServer/Broker ({vm_type})",
+                "vCores": min(12, 2 * round((vm_requirements["DBServer01"]["vCores"] + 8) / 1.5 / 2)),
+                "RAM (GB)": min(64, 2 * round((vm_requirements["DBServer01"]["RAM (GB)"] + 16) / 1.5 / 2)),
+                "Storage (GB)": vm_requirements["DBServer01"]["Storage (GB)"] + 150,
+            }
+            vm_requirements["DBServer01"] = combined_vm
 
     elif project_grade == 3:
-        for vm_name, specs in vm_requirements.items():
+        for vm_name, specs in list(vm_requirements.items()):
             if specs["VM Type"] != "PaxeraPACS":
                 specs["vCores"] = 2 * round(specs["vCores"] * 1 / 2)
                 specs["RAM (GB)"] = 2 * round(specs["RAM (GB)"] * 1 / 2)
 
         if broker_required:
             for i in range(broker_vms):
-                if "DBServer01" in vm_requirements:
-                    vm_name = f"PaxeraBroker{i + 1:02d}"
-                    dbserver_specs = vm_requirements["DBServer01"].copy()
-                    dbserver_specs["VM Type"] = "DBServer"
-                    vm_requirements["DBServer01"] = dbserver_specs
+                vm_name = f"PaxeraBroker{i + 1:02d}"
+                if vm_name in vm_requirements:
                     broker_specs = vm_requirements[vm_name].copy()
                     broker_specs["VM Type"] = vm_type
                     vm_requirements[vm_name] = broker_specs
@@ -593,48 +543,6 @@ def calculate_vm_requirements(
     else:
         sql_license = "SQL Enterprise"
 
-    # Adding Test VM logic
-    if training_vm_included:
-        if 'Express' in sql_license:
-            test_vm_cores = 8
-            test_vm_ram = 16
-        elif 'Standard' in sql_license:
-            test_vm_cores = 10
-            test_vm_ram = 32
-        elif 'Enterprise' in sql_license:
-            test_vm_cores = 12
-            test_vm_ram = 64
-
-        test_vm = {
-            "VM Type": "Test&Training(Ultima, PACS, Broker)",
-            "vCores": test_vm_cores,
-            "RAM (GB)": test_vm_ram,
-            "Storage (GB)": 150,
-        }
-        vm_requirements[f"TestVM"] = test_vm
-        total_vcpu += test_vm_cores
-        total_ram += test_vm_ram
-        total_storage += 150
-
-    # Adding Management VM logic for HA
-    if high_availability:
-        if 'Express' in sql_license or 'Standard' in sql_license:
-            mgmt_vm_cores = 8
-            mgmt_vm_ram = 32
-        elif 'Enterprise' in sql_license:
-            mgmt_vm_cores = 8
-            mgmt_vm_ram = 64
-
-        mgmt_vm = {
-            "VM Type": "Management (Backup, Antivirus, vCenter)",
-            "vCores": mgmt_vm_cores,
-            "RAM (GB)": mgmt_vm_ram,
-            "Storage (GB)": 150,
-        }
-        vm_requirements[f"ManagementVM"] = mgmt_vm
-        total_vcpu += mgmt_vm_cores
-        total_ram += mgmt_vm_ram
-        total_storage += 150
 
     df_results = pd.DataFrame.from_dict(vm_requirements, orient='index')
     df_results.loc["Total"] = ["-", total_vcpu, total_ram, total_storage]
