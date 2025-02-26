@@ -10,6 +10,7 @@ from vm_calculations import calculate_vm_requirements, modality_sizes
 
 logging.basicConfig(level=logging.INFO)
 
+
 def add_server(servers, remaining_threads, remaining_ram, max_threads, max_ram):
     if remaining_threads == 0 or remaining_ram == 0:
         return remaining_threads, remaining_ram

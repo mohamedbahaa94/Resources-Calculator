@@ -6,15 +6,17 @@
   <component name="ChangeListManager">
     <list default="true" id="0e414598-b33c-4c0e-82ac-f495982fe622" name="Changes" comment="newer">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/assets/templates/Temp.docx" beforeDir="false" afterPath="$PROJECT_DIR$/assets/templates/Temp.docx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/document_generator.py" beforeDir="false" afterPath="$PROJECT_DIR$/document_generator.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/vm_calculations.py" beforeDir="false" afterPath="$PROJECT_DIR$/vm_calculations.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="ExportToHTMLSettings">
+    <option name="printScope" value="4" />
+    <option name="OUTPUT_DIRECTORY" value="$PROJECT_DIR$/exportToHTML" />
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -153,6 +155,13 @@
       <workItem from="1737881919429" duration="4315000" />
       <workItem from="1738263090149" duration="594000" />
       <workItem from="1738516171510" duration="1138000" />
+      <workItem from="1738575442420" duration="2396000" />
+      <workItem from="1738750537736" duration="2883000" />
+      <workItem from="1739117760811" duration="2736000" />
+      <workItem from="1739573281248" duration="339000" />
+      <workItem from="1739884474057" duration="1159000" />
+      <workItem from="1739967468123" duration="1575000" />
+      <workItem from="1740321054374" duration="3284000" />
     </task>
     <task id="LOCAL-00001" summary="new">
       <option name="closed" value="true" />
@@ -242,7 +251,23 @@
       <option name="project" value="LOCAL" />
       <updated>1733703988284</updated>
     </task>
-    <option name="localTasksCounter" value="12" />
+    <task id="LOCAL-00012" summary="newer">
+      <option name="closed" value="true" />
+      <created>1738575449703</created>
+      <option name="number" value="00012" />
+      <option name="presentableId" value="LOCAL-00012" />
+      <option name="project" value="LOCAL" />
+      <updated>1738575449703</updated>
+    </task>
+    <task id="LOCAL-00013" summary="newer">
+      <option name="closed" value="true" />
+      <created>1738575625344</created>
+      <option name="number" value="00013" />
+      <option name="presentableId" value="LOCAL-00013" />
+      <option name="project" value="LOCAL" />
+      <updated>1738575625344</updated>
+    </task>
+    <option name="localTasksCounter" value="14" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
