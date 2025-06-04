@@ -482,7 +482,7 @@ def calculate_vm_requirements(
                         "VM Type": "Lesion Segmentator 2D Docker",
                         "vCores": 4,
                         "RAM (GB)": 8,
-                        "Storage (GB)": 50
+                        "Storage (GB)": 150
                     }
                     total_vcpu += 4
                     total_ram += 8
@@ -492,28 +492,28 @@ def calculate_vm_requirements(
                         "VM Type": "Lesion Segmentator 3D Docker",
                         "vCores": 6,
                         "RAM (GB)": 8,
-                        "Storage (GB)": 50
+                        "Storage (GB)":150
                     }
                     total_vcpu += 6
                     total_ram += 8
-                    total_storage += 50
+                    total_storage += 150
                 elif feature == "Speech-to-text Container":
                     vm_requirements["SpeechToText"] = {
                         "VM Type": "Speech-to-text Docker",
                         "vCores": 4,
                         "RAM (GB)": 4,
-                        "Storage (GB)": 50
+                        "Storage (GB)": 150
                     }
                     total_vcpu += 4
                     total_ram += 4
-                    total_storage += 50
+                    total_storage += 150
 
         if ark_included:
             vm_requirements["AIARKManager01"] = {
                 "VM Type": "AI ARK Manager",
                 "vCores": 12,
                 "RAM (GB)": 32,
-                "Storage (GB)": 100
+                "Storage (GB)": 200
             }
             vm_requirements["AIARKLAB01"] = {
                 "VM Type": "AI ARK LAB",
@@ -521,9 +521,9 @@ def calculate_vm_requirements(
                 "RAM (GB)": 32,
                 "Storage (GB)": 300
             }
-            total_vcpu += 12
-            total_ram += 32
-            total_storage += 300
+            total_vcpu += 24
+            total_ram += 64
+            total_storage += 500
 
 
             total_vcpu += 12

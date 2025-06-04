@@ -5,9 +5,11 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="0e414598-b33c-4c0e-82ac-f495982fe622" name="Changes" comment="newer">
+      <change afterPath="$PROJECT_DIR$/Bandwidth.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/document_generator.py" beforeDir="false" afterPath="$PROJECT_DIR$/document_generator.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/vm_calculations.py" beforeDir="false" afterPath="$PROJECT_DIR$/vm_calculations.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -17,6 +19,13 @@
   <component name="ExportToHTMLSettings">
     <option name="printScope" value="4" />
     <option name="OUTPUT_DIRECTORY" value="$PROJECT_DIR$/exportToHTML" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Python Script" />
+      </list>
+    </option>
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -52,7 +61,7 @@
     &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
     &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
     &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;configurable.group.appearance&quot;,
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
 }</component>
@@ -162,6 +171,38 @@
       <workItem from="1739884474057" duration="1159000" />
       <workItem from="1739967468123" duration="1575000" />
       <workItem from="1740321054374" duration="3284000" />
+      <workItem from="1740592783243" duration="4844000" />
+      <workItem from="1740648071890" duration="716000" />
+      <workItem from="1740915256414" duration="2450000" />
+      <workItem from="1741011883987" duration="2747000" />
+      <workItem from="1741179623599" duration="3445000" />
+      <workItem from="1741563821098" duration="48000" />
+      <workItem from="1741600987128" duration="10626000" />
+      <workItem from="1741787560695" duration="1237000" />
+      <workItem from="1742304729075" duration="531000" />
+      <workItem from="1742385628376" duration="607000" />
+      <workItem from="1742727410160" duration="2409000" />
+      <workItem from="1742991251835" duration="636000" />
+      <workItem from="1743345850675" duration="651000" />
+      <workItem from="1743946897625" duration="1527000" />
+      <workItem from="1744037800643" duration="620000" />
+      <workItem from="1744203728499" duration="3181000" />
+      <workItem from="1744545568250" duration="1862000" />
+      <workItem from="1744733886061" duration="1894000" />
+      <workItem from="1744883214530" duration="1217000" />
+      <workItem from="1745139494897" duration="709000" />
+      <workItem from="1745405092461" duration="1992000" />
+      <workItem from="1745849525466" duration="620000" />
+      <workItem from="1745913395709" duration="2437000" />
+      <workItem from="1746015819949" duration="676000" />
+      <workItem from="1746352276542" duration="802000" />
+      <workItem from="1746487511811" duration="1327000" />
+      <workItem from="1748120359095" duration="8000" />
+      <workItem from="1748265726925" duration="1214000" />
+      <workItem from="1748787582956" duration="1953000" />
+      <workItem from="1748801978110" duration="317000" />
+      <workItem from="1748850728908" duration="128000" />
+      <workItem from="1749040660481" duration="1200000" />
     </task>
     <task id="LOCAL-00001" summary="new">
       <option name="closed" value="true" />
@@ -267,7 +308,15 @@
       <option name="project" value="LOCAL" />
       <updated>1738575625344</updated>
     </task>
-    <option name="localTasksCounter" value="14" />
+    <task id="LOCAL-00014" summary="newer">
+      <option name="closed" value="true" />
+      <created>1740592878613</created>
+      <option name="number" value="00014" />
+      <option name="presentableId" value="LOCAL-00014" />
+      <option name="project" value="LOCAL" />
+      <updated>1740592878613</updated>
+    </task>
+    <option name="localTasksCounter" value="15" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">

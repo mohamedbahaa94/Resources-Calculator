@@ -348,7 +348,15 @@ def generate_document_from_template(
         if tier_2_short_term_exists:
             storage_description += tier_3_description
 
-        # Final note
+        import pandas as pd
+
+        # Check if Tier 3 column exists and contains only NaN values
+        if "Tier 3: Long-Term Storage (HDD RAID 5)" in storage_table.columns:
+            if storage_table["Tier 3: Long-Term Storage (HDD RAID 5)"].isna().all():
+                # Drop Tier 3 column if all values are NaN
+                storage_table = storage_table.drop(columns=["Tier 3: Long-Term Storage (HDD RAID 5)"])
+
+        # Add storage description
         storage_description += (
             "This architecture balances performance, scalability, and cost-efficiency, ensuring seamless availability of imaging data to "
             "support both operational and long-term requirements."
@@ -608,25 +616,28 @@ def generate_document_from_template(
             )
             add_paragraph_with_bold(doc, nas_backup_text)
 
+            # Split the backup details into lines and pass all lines to bullet points
             backup_lines = nas_backup_details.strip().split("\n")
-            if len(backup_lines) > 1:
-                remaining_lines = "\n".join(backup_lines[1:])
-                add_bullet_points_with_bold(doc, remaining_lines, "", force_bullet=True)
 
-        # Add NAS Backup Details
-        if nas_backup_details:
-            doc.add_heading('Backup Storage (NAS)', level=3)
-            nas_backup_text = (
-                "The NAS backup solution is designed to provide additional redundancy and facilitate seamless data recovery. "
-                "This backup configuration ensures long-term protection for critical medical imaging data, safeguarding against "
-                "unexpected system failures or data loss."
-            )
-            add_paragraph_with_bold(doc, nas_backup_text)
+            if backup_lines:
+                add_bullet_points_with_bold(doc, "\n".join(backup_lines), "",
+                                            force_bullet=True)  # Add all lines as bullets
 
-            backup_lines = nas_backup_details.strip().split("\n")
-            if len(backup_lines) > 1:
-                remaining_lines = "\n".join(backup_lines[1:])
-                add_bullet_points_with_bold(doc, remaining_lines, "", force_bullet=True)
+            # Add GPU Requirements (if provided)
+            # GPU Requirements Section
+            if gpu_specs:
+                doc.add_heading('GPU Requirements', level=3)
+
+                # Add descriptive text for GPU Requirements
+                add_paragraph_with_bold(
+                    doc,
+                    "The system leverages powerful GPUs to support advanced AI functionalities, enabling seamless processing "
+                    "of resource-intensive tasks like segmentation and speech-to-text analysis. These GPUs are optimized for "
+                    "high-performance medical imaging workloads."
+                )
+
+                # Add GPU details as bullet points with bold formatting
+                add_bullet_points_with_bold(doc, gpu_specs, "", force_bullet=True)
     description_text = (
                     "The table below lists the third-party licenses required to support the proposed infrastructure, "
                     "ensuring compatibility and reliability."
@@ -637,21 +648,7 @@ def generate_document_from_template(
     add_bullet_points_with_bold(doc, notes['sizing_notes'], 'Sizing Notes')
     add_bullet_points_with_bold(doc, notes['technical_requirements'], 'Technical Requirements')
     add_bullet_points_with_bold(doc, notes['network_requirements'], 'Network Requirements (LAN)')
-    # Add GPU Requirements (if provided)
-    # GPU Requirements Section
-    if gpu_specs:
-        doc.add_heading('GPU Requirements', level=3)
 
-        # Add descriptive text for GPU Requirements
-        add_paragraph_with_bold(
-            doc,
-            "The system leverages powerful GPUs to support advanced AI functionalities, enabling seamless processing "
-            "of resource-intensive tasks like segmentation and speech-to-text analysis. These GPUs are optimized for "
-            "high-performance medical imaging workloads."
-        )
-
-        # Add GPU details as bullet points with bold formatting
-        add_bullet_points_with_bold(doc, gpu_specs, "", force_bullet=True)
 
     # Add Gateway Specifications (if provided)
     if gateway_specs:
@@ -666,7 +663,7 @@ def generate_document_from_template(
 
         # Add Gateway details as bullet points using the existing utility function
         add_bullet_points_with_bold(doc, gateway_specs, "")
-
+        add_bullet_points_with_bold(doc, notes['minimum_requirements'], ' Requirements & Recommendations')
     # Workstation Specifications Section
     if diagnostic_specs is not None or viewing_specs is not None or ris_specs is not None:
         doc.add_heading('Workstation Specifications', level=2)
@@ -678,7 +675,6 @@ def generate_document_from_template(
             "clinical workflows. Each workstation is equipped with state-of-the-art hardware to ensure optimal performance "
             "and user satisfaction."
         )
-
         # Add Diagnostic Workstation Specifications
         if diagnostic_specs is not None:
             add_table_with_no_split(doc, diagnostic_specs, title='Diagnostic Workstation')
@@ -692,7 +688,6 @@ def generate_document_from_template(
         if ris_specs is not None:
             add_paragraph_with_bold(doc, "**RIS Workstation Specifications**:")
             add_table_with_no_split(doc, ris_specs, title='RIS Workstation')
-    add_bullet_points_with_bold(doc, notes['minimum_requirements'], ' Requirements & Recommendations')
 
     # Save to a buffer and return
     buffer = BytesIO()

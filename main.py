@@ -165,27 +165,43 @@ def main():
         num_machines = st.number_input("Number of Machines (Modalities):", min_value=1, value=1, format="%d")
         num_locations = st.number_input("Number of Locations:", min_value=1, value=1, format="%d")
         breakdown_per_modality = st.radio("Breakdown per Modality?", ["No", "Yes"])
+
+        # ✅ Define Modality Average Study Sizes (in MB)
+        modality_sizes_mb = {
+            "CT": 1024,
+            "MR": 100,
+            "US": 10,
+            "NM": 10,
+            "X-ray": 30,
+            "MG": 160,
+            "Cath": 300
+        }
+
         if breakdown_per_modality == "No":
             num_studies = st.number_input("Number of studies per year:", min_value=0, value=100000, format="%d")
 
-            # Display the number of studies in green with commas
+            # ✅ Display the number of studies dynamically
             st.metric(label="Number of Studies", value=f"{num_studies:,} studies", delta=None, delta_color="off")
             modality_cases = {}
         else:
             st.subheader("Modality Breakdown:")
-            modality_cases = {
-                "CT": st.number_input("CT Cases:", min_value=0, format="%d"),
-                "MR": st.number_input("MR Cases:", min_value=0, format="%d"),
-                "US": st.number_input("US Cases:", min_value=0, format="%d"),
-                "NM": st.number_input("NM Cases:", min_value=0, format="%d"),
-                "X-ray": st.number_input("X-ray Cases:", min_value=0, format="%d"),
-                "MG": st.number_input("MG Cases:", min_value=0, format="%d"),
-                "Cath": st.number_input("Cath Cases:", min_value=0, format="%d"),
-            }
+            modality_cases = {}
+
+            for modality, size_mb in modality_sizes_mb.items():
+                # ✅ Keep the old style but add the **average study size** next to each modality
+                modality_cases[modality] = st.number_input(
+                    f"{modality} Cases (📏 Avg. {size_mb:,} MB)", min_value=0, format="%d", key=modality
+                )
+
+            # ✅ Calculate the total number of studies dynamically
             num_studies = sum(modality_cases.values())
 
+            # ✅ Display the updated number of studies dynamically
+            st.metric(label="Total Number of Studies", value=f"{num_studies:,} studies", delta=None, delta_color="off")
+
         contract_duration = st.number_input("Contract Duration (years):", min_value=1, value=3, format="%d")
-        study_size_mb = st.number_input("Study Size (MB):", min_value=0, value=100, format="%d")
+        study_size_mb = st.number_input("Study Size (MB):", min_value=0, value=100,
+                                        format="%d")  # ✅ Leave this untouched
         annual_growth_rate = st.number_input("Annual Growth Rate (%):", min_value=0.0, value=10.0, format="%f")
 
     with st.expander("Project Grade"):
@@ -599,6 +615,35 @@ def main():
                 combine_pacs_ris=combine_pacs_ris,
                 **modality_cases
             )
+            results_grade2, _, first_year_storage_raid5_grade2, total_image_storage_raid5_grade2, total_vcpu_grade2, total_ram_grade2, total_storage_grade2 = calculate_vm_requirements(
+                num_studies=num_studies,
+                pacs_ccu=pacs_ccu,
+                ris_ccu=ris_ccu,
+                ref_phys_ccu=ref_phys_ccu,
+                project_grade=2,  # Grade 2
+                broker_required=broker_required,
+                broker_level=broker_level,
+                num_machines=num_machines,
+                contract_duration=contract_duration,
+                study_size_mb=study_size_mb,
+                annual_growth_rate=annual_growth_rate,
+                breakdown_per_modality=breakdown_per_modality,
+                aidocker_included=aidocker_included,
+                ark_included=ark_included,
+                u9_ai_features=[
+                    "Organ Segmentator" if organ_segmentator else None,
+                    "Lesion Segmentator 2D" if lesion_segmentator_2d else None,
+                    "Lesion Segmentator 3D" if lesion_segmentator_3d else None,
+                    "Speech-to-text Container" if speech_to_text_container else None
+                ],
+                ref_phys_external_access=ref_phys_external_access,
+                patient_portal_ccu=patient_portal_ccu,
+                patient_portal_external_access=patient_portal_external_access,
+                training_vm_included=training_vm_included,
+                high_availability=high_availability,
+                combine_pacs_ris=combine_pacs_ris,
+                **modality_cases
+            )
 
             results_grade3, _, first_year_storage_raid5_grade3, total_image_storage_raid5_grade3, total_vcpu_grade3, total_ram_grade3, total_storage_grade3 = calculate_vm_requirements(
                 num_studies=num_studies,
@@ -632,7 +677,7 @@ def main():
 
             # Define Storage Values for Display
             raid_1_storage_tb_g3 = results_grade3.loc["RAID 1 (SSD)", "Storage (GB)"] / 1024
-            raid_5_storage_tb = total_image_storage_raid5_grade3 / 1024  # Total HDD storage for full duration
+            raid_5_storage_tb = total_image_storage_raid5_grade3 / 1125  # Total HDD storage for full duration
             raid_1_storage = results.loc["RAID 1 (SSD)", "Storage (GB)"]  # Tier 1 storage
             raid_1_storage_tb = raid_1_storage / 1024  # Convert to TB
             st.subheader("Storage Requirements:")
@@ -664,71 +709,70 @@ def main():
                     else:
                         cumulative_storage = tier_3_storage[-1] + current_year_storage
                         tier_3_storage.append(round(cumulative_storage, 2))
+
+                # Define the final Tier 3 storage value
+                final_tier_3_storage = round(tier_3_storage[-1], 1)
+
             else:
-                # No intermediate Tier 2; promote Tier 3 to Tier 2
-                tier_2_label = None  # No Tier 2 storage
-                # Initialize and calculate Tier 3 storage
+                # No intermediate Tier 2; rename Tier 3 to Tier 2
+                tier_2_label = "Tier 2: Long-Term Storage (HDD RAID 5)"
+
+                # Initialize and calculate Tier 2 storage (previously Tier 3)
+                tier_2_storage = []
                 for year in years:
                     current_year_storage = initial_year_storage * (1 + annual_growth_rate / 100) ** (year - 1)
                     if year == 1:
-                        tier_3_storage.append(round(current_year_storage, 2))  # First year storage
+                        tier_2_storage.append(round(current_year_storage, 2))  # First year storage
                     else:
-                        cumulative_storage = tier_3_storage[-1] + current_year_storage
-                        tier_3_storage.append(round(cumulative_storage, 2))
+                        cumulative_storage = tier_2_storage[-1] + current_year_storage
+                        tier_2_storage.append(round(cumulative_storage, 2))
 
-            # Use the final Tier 3 storage value in the comparison tables
-            final_tier_3_storage = tier_3_storage[-1]
+                tier_3_storage = None  # Clear Tier 3 since it's now Tier 2
+                final_tier_3_storage = 0  # Set to 0 or another default value
 
             # Prepare storage data dictionary
             storage_data = {
                 "Year": [f"Year {year}" for year in years],
                 "Tier 1: OS & DB (SSD RAID 1)": [round(tier_1_storage, 2)] * len(years),
+                tier_2_label: tier_2_storage
             }
 
-            if tier_2_storage:  # Add Tier 2 only if it's present
-                storage_data[tier_2_label] = tier_2_storage
-
-            # Add Tier 3 to the storage table
-            storage_data["Tier 3: Long-Term Storage (HDD RAID 5)"] = tier_3_storage
+            # Add Tier 3 only if `include_fast_tier_storage` is True
+            if include_fast_tier_storage and tier_3_storage:
+                storage_data["Tier 3: Long-Term Storage (HDD RAID 5)"] = tier_3_storage
 
             # Create and display the Storage Table
             storage_table = pd.DataFrame(storage_data).reset_index(drop=True)
             st.table(storage_table.style.format(precision=2))
 
+
             # Resource Comparison Table
             # Minimum vs Recommended Resources for Grade 1
-            if project_grade == 1:  # Minimum vs Recommended Resources for Grade 1
+            # Resource Comparison Table
+
+            # Resource Comparison Table
+
+            if project_grade in [1, 2]:  # Grade 1 or 2: Show Minimum vs. Recommended Resources
                 comparison_data = {
                     "Specification": ["Total vCores", "Total RAM (GB)", "RAID 1 (SSD) (TB)",
                                       "RAID 5 (HDD) Full Duration (TB)"],
                     "Minimum Specs": [
-                        round(total_vcpu_grade1, 1),
-                        round(total_ram_grade1, 1),
-                        round(raid_1_storage_tb, 1),
-                        round(final_tier_3_storage, 1),  # Use final Tier 3 storage
+                        round(total_vcpu_grade1 if project_grade == 1 else total_vcpu_grade2, 1),
+                        round(total_ram_grade1 if project_grade == 1 else total_ram_grade2, 1),
+                        round(raid_1_storage_tb if project_grade == 1 else raid_1_storage_tb_g3, 1),
+                        round(raid_5_storage_tb , 1),  # Handle None case
                     ],
                     "Recommended Specs": [
                         round(total_vcpu_grade3, 1),
                         round(total_ram_grade3, 1),
                         round(raid_1_storage_tb_g3, 1),
-                        round(final_tier_3_storage, 1),  # Use final Tier 3 storage
+                        round(raid_5_storage_tb , 1),  # Handle None case
                     ],
                 }
                 df_comparison = pd.DataFrame(comparison_data)
-                st.subheader("Minimum vs. Recommended Resources:")
-                st.table(
-                    df_comparison.style.set_table_styles(
-                        [
-                            {"selector": "thead th", "props": [("font-size", "16px"), ("font-weight", "bold")]},
-                            {"selector": "tbody td", "props": [("font-size", "14px"), ("text-align", "center")]},
-                            {"selector": "tbody tr:nth-child(even)", "props": [("background-color", "#f9f9f9")]},
-                            {"selector": "tbody tr:hover", "props": [("background-color", "#f1f1f1")]},
-                        ]
-                    ).format(precision=1)
-                )
+                st.subheader(f"Minimum vs. Recommended Resources :")
 
-            # Recommended Resources Table for Grade 2 or 3
-            elif project_grade in [2, 3]:  # Only Recommended Resources for Grade 2 or 3
+            else:  # Grade 3: Show Only Recommended Resources
                 recommended_data = {
                     "Specification": ["Total vCores", "Total RAM (GB)", "RAID 1 (SSD) (TB)",
                                       "RAID 5 (HDD) Full Duration (TB)"],
@@ -736,21 +780,23 @@ def main():
                         round(total_vcpu_grade3, 1),
                         round(total_ram_grade3, 1),
                         round(raid_1_storage_tb_g3, 1),
-                        round(final_tier_3_storage, 1),  # Use final Tier 3 storage
+                        round(raid_5_storage_tb, 1),  # Handle None case
                     ],
                 }
-                df_comparison = pd.DataFrame(recommended_data)
-                st.subheader("Recommended Resources:")
-                st.table(
-                    df_comparison.style.set_table_styles(
-                        [
-                            {"selector": "thead th", "props": [("font-size", "16px"), ("font-weight", "bold")]},
-                            {"selector": "tbody td", "props": [("font-size", "14px"), ("text-align", "center")]},
-                            {"selector": "tbody tr:nth-child(even)", "props": [("background-color", "#f9f9f9")]},
-                            {"selector": "tbody tr:hover", "props": [("background-color", "#f1f1f1")]},
-                        ]
-                    ).format(precision=1)
-                )
+                df_comparison = pd.DataFrame(recommended_data)  # Keep format consistent
+                st.subheader("Recommended Resources :")
+
+            # Display table (common for all grades)
+            st.table(
+                df_comparison.style.set_table_styles(
+                    [
+                        {"selector": "thead th", "props": [("font-size", "16px"), ("font-weight", "bold")]},
+                        {"selector": "tbody td", "props": [("font-size", "14px"), ("text-align", "center")]},
+                        {"selector": "tbody tr:nth-child(even)", "props": [("background-color", "#f9f9f9")]},
+                        {"selector": "tbody tr:hover", "props": [("background-color", "#f1f1f1")]},
+                    ]
+                ).format(precision=1)
+            )
 
             # Calculate Additional VM Requirements
             if additional_vms:
@@ -823,8 +869,8 @@ def main():
                     logging.info("Total workload is within max server specs. Enforcing two servers for HA redundancy.")
 
                     # Allocate two servers with 75% of total resources
-                    threads_per_server = int(total_vcpu * 0.75)
-                    ram_per_server = int(total_ram * 0.75)
+                    threads_per_server = int(total_vcpu_grade3 * 0.75)
+                    ram_per_server = int(total_ram_grade3 * 0.75)
 
                     # Ensure threads are divisible by 2
                     if threads_per_server % 2 != 0:
@@ -994,7 +1040,8 @@ def main():
                 - **Redundancy Factor Applied:** {nas_redundancy_factor:.1f}
                 - **Backup Duration:** {nas_backup_years} years
                 - **Network Ports:** Minimum 2 (1 Gigabit; 10 Gigabit recommended)
-                - **Memory:** 8 GB (16 GB recommended)
+                - *
+                *Memory:** 8 GB (16 GB recommended)
                 - **Power Supply:** Dual (for redundancy)
                 - **RAID Configuration:** RAID 5 + hotspare for data protection
                 """
@@ -1144,6 +1191,35 @@ def main():
             """
 
             st.markdown(network_requirements)
+            if gateway_locations:
+                gateway_specs = """
+                **Recommended Hardware Specifications**  
+                - Processor: Intel core i7, Xeon 2.5 GHz or higher processor type.  
+                - RAM: 16GB  
+                - Storage: 100GB SSD for operating system, 100 GB SSD for imaging data storage (This can be changed based on the retention policy)  
+                - Network Interface: Gigabit Ethernet port  
+
+                **Software Requirements**  
+                - Operating System: Windows 10 or higher, Windows Server 2019 or higher  
+                - DB Software: MSSQL 2019 or higher edition (Express edition can be used)  
+                - Security Software: Firewall software, antivirus  
+
+                **Security Considerations**  
+                - Enable secure boot and ensure regular security updates.  
+                - Implement role-based access controls for administrative tasks.  
+                - Site to Site VPN with the main site. 
+
+                **Internet Requirements**  
+                - Minimum Required  bandwidth: 30 Mbps  
+                - Recommended  bandwidth: 50 Mbps
+                """
+                st.subheader("Gateway Workstation Specs")
+                st.markdown(f"<h4>Gateway Locations: {', '.join(map(str, gateway_locations))}</h4>",
+                            unsafe_allow_html=True)
+                st.markdown(gateway_specs)
+            else:
+                gateway_specs = None
+
 
             st.subheader("Minimum Requirements & Recommendations:")
             st.markdown("""
@@ -1218,36 +1294,7 @@ def main():
                 st.subheader(f"Server Design for {location['location']}:")
                 st.markdown(mini_pacs_server_specs)
 
-            if gateway_locations:
-                gateway_specs = """
-                **Recommended Hardware Specifications**  
-                - Processor: Intel core i7, Xeon 2.5 GHz or higher processor type.  
-                - RAM: 16GB  
-                - Storage: 100GB SSD for operating system, 100 GB SSD for imaging data storage (This can be changed based on the retention policy)  
-                - Network Interface: Gigabit Ethernet port  
-
-                **Software Requirements**  
-                - Operating System: Windows 10 or higher, Windows Server 2019 or higher  
-                - DB Software: MSSQL 2019 or higher edition (Express edition can be used)  
-                - Security Software: Firewall software, antivirus  
-
-                **Security Considerations**  
-                - Enable secure boot and ensure regular security updates.  
-                - Implement role-based access controls for administrative tasks.  
-                - Site to Site VPN with the main site. 
-
-                **Internet Requirements**  
-                - Minimum Required  bandwidth: 30 Mbps  
-                - Recommended  bandwidth: 50 Mbps
-                """
-                st.subheader("Gateway Workstation Specs")
-                st.markdown(f"<h4>Gateway Locations: {', '.join(map(str, gateway_locations))}</h4>",
-                            unsafe_allow_html=True)
-                st.markdown(gateway_specs)
-            else:
-                gateway_specs = None
-
-                # Construct Licensing Notes Dynamically
+                            # Construct Licensing Notes Dynamically
             licensing_notes = []
 
             # Windows Licensing Note
