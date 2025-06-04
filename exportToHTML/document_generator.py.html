@@ -1,0 +1,724 @@
+<html>
+<head>
+<title>document_generator.py</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<style type="text/css">
+.s0 { color: #cf8e6d;}
+.s1 { color: #bcbec4;}
+.s2 { color: #bcbec4;}
+.s3 { color: #5f826b; font-style: italic;}
+.s4 { color: #6aab73;}
+.s5 { color: #2aacb8;}
+.s6 { color: #7a7e85;}
+</style>
+</head>
+<body bgcolor="#1e1f22">
+<table CELLSPACING=0 CELLPADDING=5 COLS=1 WIDTH="100%" BGCOLOR="#606060" >
+<tr><td><center>
+<font face="Arial, Helvetica" color="#000000">
+document_generator.py</font>
+</center></td></tr></table>
+<pre><span class="s0">import </span><span class="s1">base64</span>
+<span class="s0">from </span><span class="s1">io </span><span class="s0">import </span><span class="s1">BytesIO</span>
+
+<span class="s0">import </span><span class="s1">docx</span>
+<span class="s0">import </span><span class="s1">pandas </span><span class="s0">as </span><span class="s1">pd</span>
+<span class="s0">from </span><span class="s1">docx </span><span class="s0">import </span><span class="s1">Document</span>
+<span class="s0">from </span><span class="s1">datetime </span><span class="s0">import </span><span class="s1">datetime</span>
+<span class="s0">from </span><span class="s1">docx</span><span class="s2">.</span><span class="s1">oxml</span><span class="s2">.</span><span class="s1">ns </span><span class="s0">import </span><span class="s1">qn</span>
+<span class="s0">from </span><span class="s1">docx</span><span class="s2">.</span><span class="s1">oxml </span><span class="s0">import </span><span class="s1">OxmlElement</span>
+<span class="s0">from </span><span class="s1">docx</span><span class="s2">.</span><span class="s1">enum</span><span class="s2">.</span><span class="s1">text </span><span class="s0">import </span><span class="s1">WD_ALIGN_PARAGRAPH</span>
+<span class="s0">from </span><span class="s1">docx</span><span class="s2">.</span><span class="s1">shared </span><span class="s0">import </span><span class="s1">Pt</span>
+
+<span class="s0">from </span><span class="s1">docx</span><span class="s2">.</span><span class="s1">oxml </span><span class="s0">import </span><span class="s1">OxmlElement</span>
+<span class="s0">from </span><span class="s1">docx</span><span class="s2">.</span><span class="s1">oxml</span><span class="s2">.</span><span class="s1">ns </span><span class="s0">import </span><span class="s1">qn</span>
+
+<span class="s0">def </span><span class="s1">add_paragraph_with_bold</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">text</span><span class="s2">):</span>
+    <span class="s3">&quot;&quot;&quot; 
+    Adds a paragraph to the document with text that can include **bold** segments. 
+    &quot;&quot;&quot;</span>
+    <span class="s1">paragraph </span><span class="s2">= </span><span class="s1">doc</span><span class="s2">.</span><span class="s1">add_paragraph</span><span class="s2">()</span>
+    <span class="s1">parts </span><span class="s2">= </span><span class="s1">text</span><span class="s2">.</span><span class="s1">split</span><span class="s2">(</span><span class="s4">&quot;**&quot;</span><span class="s2">)</span>
+    <span class="s0">for </span><span class="s1">i</span><span class="s2">, </span><span class="s1">part </span><span class="s0">in </span><span class="s1">enumerate</span><span class="s2">(</span><span class="s1">parts</span><span class="s2">):</span>
+        <span class="s0">if </span><span class="s1">i </span><span class="s2">% </span><span class="s5">2 </span><span class="s2">== </span><span class="s5">1</span><span class="s2">:  </span><span class="s6"># Odd indices are the bold segments</span>
+            <span class="s1">run </span><span class="s2">= </span><span class="s1">paragraph</span><span class="s2">.</span><span class="s1">add_run</span><span class="s2">(</span><span class="s1">part</span><span class="s2">)</span>
+            <span class="s1">run</span><span class="s2">.</span><span class="s1">bold </span><span class="s2">= </span><span class="s0">True</span>
+        <span class="s0">else</span><span class="s2">:</span>
+            <span class="s1">paragraph</span><span class="s2">.</span><span class="s1">add_run</span><span class="s2">(</span><span class="s1">part</span><span class="s2">)</span>
+    <span class="s0">return </span><span class="s1">paragraph</span>
+
+<span class="s0">def </span><span class="s1">add_table_with_no_split</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">df</span><span class="s2">, </span><span class="s1">title</span><span class="s2">, </span><span class="s1">description</span><span class="s2">=</span><span class="s0">None</span><span class="s2">):</span>
+    <span class="s3">&quot;&quot;&quot; 
+    Adds a table to the document and ensures it does not split across pages. 
+    Allows an optional description to be included above the table with support for bold text formatting. 
+ 
+    Args: 
+        doc (Document): The Word document to add the table to. 
+        df (DataFrame): The data to populate the table. 
+        title (str): The title for the table. 
+        description (str, optional): An explanatory paragraph to add before the table. Default is None. 
+    &quot;&quot;&quot;</span>
+    <span class="s6"># Add heading</span>
+    <span class="s1">doc</span><span class="s2">.</span><span class="s1">add_heading</span><span class="s2">(</span><span class="s1">title</span><span class="s2">, </span><span class="s1">level</span><span class="s2">=</span><span class="s5">3</span><span class="s2">)</span>
+
+    <span class="s6"># Add explanatory text if provided</span>
+    <span class="s0">if </span><span class="s1">description</span><span class="s2">:</span>
+        <span class="s1">add_paragraph_with_bold</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">description</span><span class="s2">)</span>
+
+    <span class="s6"># Create the table</span>
+    <span class="s1">table </span><span class="s2">= </span><span class="s1">doc</span><span class="s2">.</span><span class="s1">add_table</span><span class="s2">(</span><span class="s1">rows</span><span class="s2">=</span><span class="s5">1</span><span class="s2">, </span><span class="s1">cols</span><span class="s2">=</span><span class="s1">len</span><span class="s2">(</span><span class="s1">df</span><span class="s2">.</span><span class="s1">columns</span><span class="s2">), </span><span class="s1">style</span><span class="s2">=</span><span class="s4">'CustomTableStyle'</span><span class="s2">)</span>
+
+    <span class="s6"># Add table header</span>
+    <span class="s1">header_cells </span><span class="s2">= </span><span class="s1">table</span><span class="s2">.</span><span class="s1">rows</span><span class="s2">[</span><span class="s5">0</span><span class="s2">].</span><span class="s1">cells</span>
+    <span class="s0">for </span><span class="s1">i</span><span class="s2">, </span><span class="s1">column_name </span><span class="s0">in </span><span class="s1">enumerate</span><span class="s2">(</span><span class="s1">df</span><span class="s2">.</span><span class="s1">columns</span><span class="s2">):</span>
+        <span class="s1">header_cells</span><span class="s2">[</span><span class="s1">i</span><span class="s2">].</span><span class="s1">text </span><span class="s2">= </span><span class="s1">column_name</span>
+
+    <span class="s6"># Add table rows</span>
+    <span class="s0">for </span><span class="s1">_</span><span class="s2">, </span><span class="s1">row </span><span class="s0">in </span><span class="s1">df</span><span class="s2">.</span><span class="s1">iterrows</span><span class="s2">():</span>
+        <span class="s1">row_cells </span><span class="s2">= </span><span class="s1">table</span><span class="s2">.</span><span class="s1">add_row</span><span class="s2">().</span><span class="s1">cells</span>
+        <span class="s0">for </span><span class="s1">i</span><span class="s2">, </span><span class="s1">value </span><span class="s0">in </span><span class="s1">enumerate</span><span class="s2">(</span><span class="s1">row</span><span class="s2">):</span>
+            <span class="s1">row_cells</span><span class="s2">[</span><span class="s1">i</span><span class="s2">].</span><span class="s1">text </span><span class="s2">= </span><span class="s1">str</span><span class="s2">(</span><span class="s1">value</span><span class="s2">)</span>
+
+    <span class="s6"># Prevent the table from splitting across pages</span>
+    <span class="s0">for </span><span class="s1">row </span><span class="s0">in </span><span class="s1">table</span><span class="s2">.</span><span class="s1">rows</span><span class="s2">:</span>
+        <span class="s1">tr </span><span class="s2">= </span><span class="s1">row</span><span class="s2">.</span><span class="s1">_tr</span>
+        <span class="s1">trPr </span><span class="s2">= </span><span class="s1">tr</span><span class="s2">.</span><span class="s1">get_or_add_trPr</span><span class="s2">()</span>
+        <span class="s1">cant_split </span><span class="s2">= </span><span class="s1">OxmlElement</span><span class="s2">(</span><span class="s4">'w:cantSplit'</span><span class="s2">)</span>
+        <span class="s1">trPr</span><span class="s2">.</span><span class="s1">append</span><span class="s2">(</span><span class="s1">cant_split</span><span class="s2">)</span>
+
+    <span class="s6"># Ensure the table as a whole does not split</span>
+    <span class="s1">tbl </span><span class="s2">= </span><span class="s1">table</span><span class="s2">.</span><span class="s1">_element</span>
+    <span class="s1">tblPr </span><span class="s2">= </span><span class="s1">tbl</span><span class="s2">.</span><span class="s1">find</span><span class="s2">(</span><span class="s1">qn</span><span class="s2">(</span><span class="s4">'w:tblPr'</span><span class="s2">))</span>
+    <span class="s0">if </span><span class="s1">tblPr </span><span class="s0">is None</span><span class="s2">:</span>
+        <span class="s1">tblPr </span><span class="s2">= </span><span class="s1">OxmlElement</span><span class="s2">(</span><span class="s4">'w:tblPr'</span><span class="s2">)</span>
+        <span class="s1">tbl</span><span class="s2">.</span><span class="s1">insert</span><span class="s2">(</span><span class="s5">0</span><span class="s2">, </span><span class="s1">tblPr</span><span class="s2">)</span>
+    <span class="s1">tblPr</span><span class="s2">.</span><span class="s1">append</span><span class="s2">(</span><span class="s1">OxmlElement</span><span class="s2">(</span><span class="s4">'w:tblInd'</span><span class="s2">))  </span><span class="s6"># Prevent splitting at the table level</span>
+
+    <span class="s0">return </span><span class="s1">table</span>
+
+<span class="s0">def </span><span class="s1">generate_introduction</span><span class="s2">(</span><span class="s1">customer_name</span><span class="s2">, </span><span class="s1">high_availability</span><span class="s2">, </span><span class="s1">nas_backup_details</span><span class="s2">, </span><span class="s1">tier_3_disks</span><span class="s2">, </span><span class="s1">gpu_specs</span><span class="s2">):</span>
+
+        <span class="s3">&quot;&quot;&quot; 
+        Generate a polished narrative-style introduction with refined text and conditional tiering logic 
+        for PaxeraHealth imaging solutions, using bullet points for key features. 
+        &quot;&quot;&quot;</span>
+        <span class="s6"># Base introduction paragraph</span>
+        <span class="s1">intro_text </span><span class="s2">= (</span>
+            <span class="s4">f&quot;The **</span><span class="s0">{</span><span class="s1">customer_name</span><span class="s0">} </span><span class="s4">IT Infrastructure, Hardware, and Virtual Machine (VM) Design Recommendations** document provides a comprehensive blueprint &quot;</span>
+            <span class="s4">&quot;tailored for the deployment and scalability of **PaxeraHealth’s advanced medical imaging solutions**. &quot;</span>
+            <span class="s4">&quot;This document outlines the architectural design, hardware specifications, storage strategies, and virtual machine configurations &quot;</span>
+            <span class="s4">&quot;required to meet the operational and performance needs of healthcare facilities.</span><span class="s0">\n\n</span><span class="s4">&quot;</span>
+            <span class="s4">&quot;The design prioritizes:</span><span class="s0">\n</span><span class="s4">&quot;</span>
+            <span class="s4">&quot;• **Scalability:** Ensuring the system can grow seamlessly with increased demand.</span><span class="s0">\n</span><span class="s4">&quot;</span>
+            <span class="s4">&quot;• **Reliability:** Delivering continuous and uninterrupted services across critical infrastructure.</span><span class="s0">\n</span><span class="s4">&quot;</span>
+            <span class="s4">&quot;• **Performance Optimization:** Leveraging cutting-edge technology for optimal efficiency.</span><span class="s0">\n</span><span class="s4">&quot;</span>
+            <span class="s4">&quot;• **Robust Security Measures:** Safeguarding sensitive medical data with industry-standard protocols.</span><span class="s0">\n</span><span class="s4">&quot;</span>
+            <span class="s4">&quot;• **Compliance:** Adhering to international standards for healthcare IT infrastructure.&quot;</span>
+        <span class="s2">)</span>
+
+        <span class="s6"># Initialize a list to hold all sections</span>
+        <span class="s1">sections </span><span class="s2">= [</span><span class="s1">intro_text</span><span class="s2">]</span>
+
+        <span class="s6"># Modular Features Section</span>
+        <span class="s1">feature_intro_text </span><span class="s2">= </span><span class="s4">&quot;</span><span class="s0">\n</span><span class="s4">**Key Features of the Proposed Design Include:**&quot;</span>
+        <span class="s1">sections</span><span class="s2">.</span><span class="s1">append</span><span class="s2">(</span><span class="s1">feature_intro_text</span><span class="s2">)</span>
+
+        <span class="s6"># High Availability or Single Server</span>
+        <span class="s0">if </span><span class="s1">high_availability</span><span class="s2">:</span>
+            <span class="s1">ha_text </span><span class="s2">= (</span>
+                <span class="s4">&quot;• **High Availability (HA):** Ensures uninterrupted operations, minimizes downtime, and supports fault tolerance, &quot;</span>
+                <span class="s4">&quot;providing continuous accessibility to critical medical imaging systems. &quot;</span>
+                <span class="s4">&quot;The design incorporates **automatic failover and failback capabilities**, allowing seamless transitions between primary and backup systems &quot;</span>
+                <span class="s4">&quot;to maintain service continuity during failures and ensure rapid recovery without manual intervention.&quot;</span>
+            <span class="s2">)</span>
+            <span class="s1">sections</span><span class="s2">.</span><span class="s1">append</span><span class="s2">(</span><span class="s1">ha_text</span><span class="s2">)</span>
+        <span class="s0">else</span><span class="s2">:</span>
+            <span class="s1">single_deployment_text </span><span class="s2">= (</span>
+                <span class="s4">&quot;• **Single Deployment Architecture:** Designed for environments where redundancy is not a primary requirement. &quot;</span>
+                <span class="s4">&quot;This deployment typically involves one or two servers operating without redundancy, while still delivering essential system performance &quot;</span>
+                <span class="s4">&quot;and supporting critical medical imaging workflows efficiently.&quot;</span>
+            <span class="s2">)</span>
+            <span class="s1">sections</span><span class="s2">.</span><span class="s1">append</span><span class="s2">(</span><span class="s1">single_deployment_text</span><span class="s2">)</span>
+        <span class="s6"># GPU Specs</span>
+        <span class="s0">if </span><span class="s1">gpu_specs</span><span class="s2">:</span>
+            <span class="s1">gpu_text </span><span class="s2">= (</span>
+                <span class="s4">&quot;• **GPU-Powered Processing:** Enables advanced AI functionalities, optimized performance for resource-intensive tasks, &quot;</span>
+                <span class="s4">&quot;and innovative AI-driven analysis and visualization.&quot;</span>
+            <span class="s2">)</span>
+            <span class="s1">sections</span><span class="s2">.</span><span class="s1">append</span><span class="s2">(</span><span class="s1">gpu_text</span><span class="s2">)</span>
+
+        <span class="s6"># Storage Logic: Include both Short-Term and Standard Tiering if tier_3_disks is enabled</span>
+        <span class="s0">if </span><span class="s1">tier_3_disks </span><span class="s2">!= </span><span class="s5">0</span><span class="s2">:</span>
+            <span class="s1">storage_text </span><span class="s2">= (</span>
+                <span class="s4">&quot;• **Three-Tier Storage Architecture:** The design incorporates a three-tier storage strategy to optimize imaging workflows and data lifecycle management. &quot;</span>
+                <span class="s4">&quot;Tier 1 utilizes **high-performance SSD storage** for OS and critical application data, ensuring rapid response times and system stability. &quot;</span>
+                <span class="s4">&quot;Tier 2 employs **flash storage for short-term imaging workflows**, providing fast access to frequently used imaging data. &quot;</span>
+                <span class="s4">&quot;Tier 3 leverages **cost-efficient HDD storage** for long-term archiving, ensuring scalability and reliable access to historical imaging data.&quot;</span>
+            <span class="s2">)</span>
+        <span class="s0">else</span><span class="s2">:</span>
+            <span class="s1">storage_text </span><span class="s2">= (</span>
+                <span class="s4">&quot;• **Standard Two-Tier Storage Architecture:** The design features a two-tier storage approach for efficient imaging data management. &quot;</span>
+                <span class="s4">&quot;Tier 1 utilizes **high-performance SSD storage** for OS and critical application data, ensuring system responsiveness and reliability. &quot;</span>
+                <span class="s4">&quot;Tier 2 employs **cost-efficient HDD storage** for long-term archiving, offering scalability and secure storage for historical imaging data.&quot;</span>
+            <span class="s2">)</span>
+        <span class="s1">sections</span><span class="s2">.</span><span class="s1">append</span><span class="s2">(</span><span class="s1">storage_text</span><span class="s2">)</span>
+        <span class="s6"># NAS Backup</span>
+        <span class="s0">if </span><span class="s1">nas_backup_details</span><span class="s2">:</span>
+            <span class="s1">nas_text </span><span class="s2">= (</span>
+                <span class="s4">&quot;• **NAS Backup Solution:** Provides long-term data protection, robust redundancy, and seamless recovery for critical medical imaging archives.&quot;</span>
+            <span class="s2">)</span>
+            <span class="s1">sections</span><span class="s2">.</span><span class="s1">append</span><span class="s2">(</span><span class="s1">nas_text</span><span class="s2">)</span>
+
+        <span class="s6"># Conclude the introduction</span>
+        <span class="s1">conclusion_text </span><span class="s2">= (</span>
+            <span class="s4">f&quot;</span><span class="s0">\n</span><span class="s4">This document serves as a reference for stakeholders, IT administrators, and decision-makers, providing clarity on system requirements, &quot;</span>
+            <span class="s4">&quot;deployment guidelines, and long-term operational strategies. Through this approach, **PaxeraHealth** aims to deliver not just a solution &quot;</span>
+            <span class="s4">f&quot;but a sustainable foundation for future healthcare innovations at **</span><span class="s0">{</span><span class="s1">customer_name</span><span class="s0">}</span><span class="s4">**.&quot;</span>
+        <span class="s2">)</span>
+        <span class="s1">sections</span><span class="s2">.</span><span class="s1">append</span><span class="s2">(</span><span class="s1">conclusion_text</span><span class="s2">)</span>
+
+        <span class="s6"># Join all sections for the introduction</span>
+        <span class="s0">return </span><span class="s1">sections</span>
+
+
+<span class="s6"># Add Introduction to Document</span>
+<span class="s0">def </span><span class="s1">add_introduction_to_document</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">intro_sections</span><span class="s2">):</span>
+    <span class="s3">&quot;&quot;&quot; 
+    Adds the introduction sections to the Word document with bold formatting 
+    and proper spacing between paragraphs. 
+    &quot;&quot;&quot;</span>
+    <span class="s1">doc</span><span class="s2">.</span><span class="s1">add_heading</span><span class="s2">(</span><span class="s4">&quot;Introduction&quot;</span><span class="s2">, </span><span class="s1">level</span><span class="s2">=</span><span class="s5">2</span><span class="s2">)</span>
+    <span class="s0">for </span><span class="s1">section </span><span class="s0">in </span><span class="s1">intro_sections</span><span class="s2">:</span>
+        <span class="s1">paragraph </span><span class="s2">= </span><span class="s1">doc</span><span class="s2">.</span><span class="s1">add_paragraph</span><span class="s2">()</span>
+        <span class="s1">paragraph</span><span class="s2">.</span><span class="s1">alignment </span><span class="s2">= </span><span class="s1">WD_ALIGN_PARAGRAPH</span><span class="s2">.</span><span class="s1">LEFT</span>
+        <span class="s1">paragraph_format </span><span class="s2">= </span><span class="s1">paragraph</span><span class="s2">.</span><span class="s1">paragraph_format</span>
+        <span class="s1">paragraph_format</span><span class="s2">.</span><span class="s1">first_line_indent </span><span class="s2">= </span><span class="s1">Pt</span><span class="s2">(</span><span class="s5">0</span><span class="s2">)</span>
+        <span class="s1">paragraph_format</span><span class="s2">.</span><span class="s1">space_after </span><span class="s2">= </span><span class="s1">Pt</span><span class="s2">(</span><span class="s5">12</span><span class="s2">)  </span><span class="s6"># Add space after each paragraph</span>
+
+        <span class="s6"># Split the section text by '**' to identify bold segments</span>
+        <span class="s1">parts </span><span class="s2">= </span><span class="s1">section</span><span class="s2">.</span><span class="s1">split</span><span class="s2">(</span><span class="s4">'**'</span><span class="s2">)</span>
+        <span class="s0">for </span><span class="s1">i</span><span class="s2">, </span><span class="s1">part </span><span class="s0">in </span><span class="s1">enumerate</span><span class="s2">(</span><span class="s1">parts</span><span class="s2">):</span>
+            <span class="s1">run </span><span class="s2">= </span><span class="s1">paragraph</span><span class="s2">.</span><span class="s1">add_run</span><span class="s2">(</span><span class="s1">part</span><span class="s2">)</span>
+            <span class="s0">if </span><span class="s1">i </span><span class="s2">% </span><span class="s5">2 </span><span class="s2">== </span><span class="s5">1</span><span class="s2">:  </span><span class="s6"># Odd indices correspond to bold text</span>
+                <span class="s1">run</span><span class="s2">.</span><span class="s1">bold </span><span class="s2">= </span><span class="s0">True</span>
+<span class="s0">def </span><span class="s1">get_binary_file_downloader_html</span><span class="s2">(</span><span class="s1">bin_file</span><span class="s2">, </span><span class="s1">file_label</span><span class="s2">=</span><span class="s4">'File'</span><span class="s2">, </span><span class="s1">customer_name</span><span class="s2">=</span><span class="s4">'Customer'</span><span class="s2">, </span><span class="s1">file_extension</span><span class="s2">=</span><span class="s4">'.docx'</span><span class="s2">):</span>
+    <span class="s1">file_name </span><span class="s2">= </span><span class="s4">f'</span><span class="s0">{</span><span class="s1">customer_name</span><span class="s0">}</span><span class="s4">_IT Infrastructure, HW, and VM Design </span><span class="s0">{</span><span class="s1">file_extension</span><span class="s0">}</span><span class="s4">'</span>
+    <span class="s1">bin_str </span><span class="s2">= </span><span class="s1">bin_file</span><span class="s2">.</span><span class="s1">read</span><span class="s2">()</span>
+    <span class="s1">href </span><span class="s2">= </span><span class="s4">f'&lt;a href=&quot;data:application/octet-stream;base64,</span><span class="s0">{</span><span class="s1">base64</span><span class="s2">.</span><span class="s1">b64encode</span><span class="s2">(</span><span class="s1">bin_str</span><span class="s2">).</span><span class="s1">decode</span><span class="s2">()</span><span class="s0">}</span><span class="s4">&quot; download=&quot;</span><span class="s0">{</span><span class="s1">file_name</span><span class="s0">}</span><span class="s4">&quot;&gt;</span><span class="s0">{</span><span class="s1">file_label</span><span class="s0">}</span><span class="s4">&lt;/a&gt;'</span>
+    <span class="s0">return </span><span class="s1">href</span>
+
+<span class="s0">def </span><span class="s1">add_bullet_points_with_bold</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">text</span><span class="s2">, </span><span class="s1">heading</span><span class="s2">, </span><span class="s1">bullet_symbol</span><span class="s2">=</span><span class="s4">&quot;•&quot;</span><span class="s2">, </span><span class="s1">force_bullet</span><span class="s2">=</span><span class="s0">False</span><span class="s2">):</span>
+    <span class="s3">&quot;&quot;&quot; 
+    Adds a section with bullet points and handles bold text within the points. 
+    Ensures consistent bullet style using a specified bullet symbol. 
+    Removes leading symbols (like '-') from each line. 
+    Skips bullets for lines that are entirely bold or start with bold text unless forced. 
+    Skips adding the heading if it is empty or contains only whitespace. 
+    &quot;&quot;&quot;</span>
+    <span class="s6"># Add the section heading if it's not empty or whitespace</span>
+    <span class="s0">if </span><span class="s1">heading</span><span class="s2">.</span><span class="s1">strip</span><span class="s2">():</span>
+        <span class="s1">doc</span><span class="s2">.</span><span class="s1">add_heading</span><span class="s2">(</span><span class="s1">heading</span><span class="s2">, </span><span class="s1">level</span><span class="s2">=</span><span class="s5">3</span><span class="s2">)</span>
+
+    <span class="s6"># Process each line in the text</span>
+    <span class="s0">for </span><span class="s1">line </span><span class="s0">in </span><span class="s1">text</span><span class="s2">.</span><span class="s1">strip</span><span class="s2">().</span><span class="s1">split</span><span class="s2">(</span><span class="s4">'</span><span class="s0">\n</span><span class="s4">'</span><span class="s2">):</span>
+        <span class="s0">if </span><span class="s1">line</span><span class="s2">.</span><span class="s1">strip</span><span class="s2">():  </span><span class="s6"># Ensure the line isn't empty</span>
+            <span class="s6"># Remove leading symbols like '-' or bullets</span>
+            <span class="s1">cleaned_line </span><span class="s2">= </span><span class="s1">line</span><span class="s2">.</span><span class="s1">strip</span><span class="s2">().</span><span class="s1">lstrip</span><span class="s2">(</span><span class="s4">'-'</span><span class="s2">).</span><span class="s1">strip</span><span class="s2">()</span>
+
+            <span class="s6"># Check if the line starts with bold text</span>
+            <span class="s0">if not </span><span class="s1">force_bullet </span><span class="s0">and </span><span class="s1">cleaned_line</span><span class="s2">.</span><span class="s1">startswith</span><span class="s2">(</span><span class="s4">&quot;**&quot;</span><span class="s2">) </span><span class="s0">and </span><span class="s4">&quot;**&quot; </span><span class="s0">in </span><span class="s1">cleaned_line</span><span class="s2">[</span><span class="s5">2</span><span class="s2">:]:</span>
+                <span class="s6"># Add a paragraph with bold formatting but no bullet</span>
+                <span class="s1">parts </span><span class="s2">= </span><span class="s1">cleaned_line</span><span class="s2">.</span><span class="s1">split</span><span class="s2">(</span><span class="s4">&quot;**&quot;</span><span class="s2">)</span>
+                <span class="s1">paragraph </span><span class="s2">= </span><span class="s1">doc</span><span class="s2">.</span><span class="s1">add_paragraph</span><span class="s2">()</span>
+                <span class="s0">for </span><span class="s1">i</span><span class="s2">, </span><span class="s1">part </span><span class="s0">in </span><span class="s1">enumerate</span><span class="s2">(</span><span class="s1">parts</span><span class="s2">):</span>
+                    <span class="s1">run </span><span class="s2">= </span><span class="s1">paragraph</span><span class="s2">.</span><span class="s1">add_run</span><span class="s2">(</span><span class="s4">f&quot;</span><span class="s0">{</span><span class="s1">part</span><span class="s2">.</span><span class="s1">strip</span><span class="s2">()</span><span class="s0">} </span><span class="s4">&quot;</span><span class="s2">)</span>
+                    <span class="s0">if </span><span class="s1">i </span><span class="s2">% </span><span class="s5">2 </span><span class="s2">== </span><span class="s5">1</span><span class="s2">:  </span><span class="s6"># Odd indices are bold text</span>
+                        <span class="s1">run</span><span class="s2">.</span><span class="s1">bold </span><span class="s2">= </span><span class="s0">True</span>
+            <span class="s0">else</span><span class="s2">:</span>
+                <span class="s6"># Add a new paragraph for the bullet point</span>
+                <span class="s1">paragraph </span><span class="s2">= </span><span class="s1">doc</span><span class="s2">.</span><span class="s1">add_paragraph</span><span class="s2">()</span>
+                <span class="s1">paragraph_format </span><span class="s2">= </span><span class="s1">paragraph</span><span class="s2">.</span><span class="s1">paragraph_format</span>
+                <span class="s1">paragraph_format</span><span class="s2">.</span><span class="s1">space_after </span><span class="s2">= </span><span class="s1">Pt</span><span class="s2">(</span><span class="s5">6</span><span class="s2">)  </span><span class="s6"># Add space after each bullet point</span>
+
+                <span class="s6"># Insert the bullet symbol</span>
+                <span class="s1">run </span><span class="s2">= </span><span class="s1">paragraph</span><span class="s2">.</span><span class="s1">add_run</span><span class="s2">(</span><span class="s4">f'</span><span class="s0">{</span><span class="s1">bullet_symbol</span><span class="s0">} </span><span class="s4">'</span><span class="s2">)</span>
+                <span class="s1">run</span><span class="s2">.</span><span class="s1">bold </span><span class="s2">= </span><span class="s0">False  </span><span class="s6"># Bullet itself is not bold</span>
+
+                <span class="s6"># Split the cleaned line to handle bold formatting</span>
+                <span class="s1">parts </span><span class="s2">= </span><span class="s1">cleaned_line</span><span class="s2">.</span><span class="s1">split</span><span class="s2">(</span><span class="s4">&quot;**&quot;</span><span class="s2">)  </span><span class="s6"># Handle bold segments</span>
+                <span class="s0">for </span><span class="s1">i</span><span class="s2">, </span><span class="s1">part </span><span class="s0">in </span><span class="s1">enumerate</span><span class="s2">(</span><span class="s1">parts</span><span class="s2">):</span>
+                    <span class="s1">run </span><span class="s2">= </span><span class="s1">paragraph</span><span class="s2">.</span><span class="s1">add_run</span><span class="s2">(</span><span class="s4">f&quot;</span><span class="s0">{</span><span class="s1">part</span><span class="s2">.</span><span class="s1">strip</span><span class="s2">()</span><span class="s0">} </span><span class="s4">&quot;</span><span class="s2">)</span>
+                    <span class="s0">if </span><span class="s1">i </span><span class="s2">% </span><span class="s5">2 </span><span class="s2">== </span><span class="s5">1</span><span class="s2">:  </span><span class="s6"># Odd indices are bold text</span>
+                        <span class="s1">run</span><span class="s2">.</span><span class="s1">bold </span><span class="s2">= </span><span class="s0">True</span>
+
+
+<span class="s0">def </span><span class="s1">generate_document_from_template</span><span class="s2">(</span>
+    <span class="s1">template_path</span><span class="s2">,</span>
+    <span class="s1">results</span><span class="s2">,</span>
+    <span class="s1">results_grade1</span><span class="s2">,</span>
+    <span class="s1">results_grade3</span><span class="s2">,</span>
+    <span class="s1">df_comparison</span><span class="s2">,</span>
+    <span class="s1">third_party_licenses</span><span class="s2">,</span>
+    <span class="s1">notes</span><span class="s2">,</span>
+    <span class="s1">input_table</span><span class="s2">,</span>
+    <span class="s1">customer_name</span><span class="s2">,</span>
+    <span class="s1">high_availability</span><span class="s2">,</span>
+    <span class="s1">server_specs</span><span class="s2">,</span>
+    <span class="s1">gpu_specs</span><span class="s2">,</span>
+    <span class="s1">first_year_storage_raid5</span><span class="s2">,</span>
+    <span class="s1">total_image_storage_raid5</span><span class="s2">,</span>
+    <span class="s1">num_studies</span><span class="s2">,</span>
+    <span class="s1">storage_title</span><span class="s2">,</span>
+    <span class="s1">shared_storage</span><span class="s2">,</span>
+    <span class="s1">raid_1_storage_tb</span><span class="s2">,</span>
+    <span class="s1">gateway_specs</span><span class="s2">,</span>
+    <span class="s1">diagnostic_specs</span><span class="s2">=</span><span class="s0">None</span><span class="s2">,</span>
+    <span class="s1">viewing_specs</span><span class="s2">=</span><span class="s0">None</span><span class="s2">,</span>
+    <span class="s1">ris_specs</span><span class="s2">=</span><span class="s0">None</span><span class="s2">,</span>
+    <span class="s1">project_grade</span><span class="s2">=</span><span class="s0">None</span><span class="s2">,</span>
+    <span class="s1">storage_table</span><span class="s2">=</span><span class="s0">None</span><span class="s2">,</span>
+    <span class="s1">physical_design</span><span class="s2">=</span><span class="s0">None</span><span class="s2">,</span>
+    <span class="s1">nas_backup_details</span><span class="s2">=</span><span class="s0">None</span><span class="s2">,</span>
+    <span class="s1">tier_2_disks</span><span class="s2">=</span><span class="s0">None</span><span class="s2">,</span>
+    <span class="s1">tier_2_disk_size</span><span class="s2">=</span><span class="s0">None</span><span class="s2">,</span>
+    <span class="s1">tier_3_disks</span><span class="s2">=</span><span class="s0">None</span><span class="s2">,</span>
+    <span class="s1">tier_3_disk_size</span><span class="s2">=</span><span class="s0">None</span><span class="s2">,</span>
+    <span class="s1">additional_vm_table</span><span class="s2">=</span><span class="s0">None</span><span class="s2">,</span>
+    <span class="s1">additional_vm_notes</span><span class="s2">=</span><span class="s0">None</span><span class="s2">,</span>
+    <span class="s1">general_notes</span><span class="s2">=</span><span class="s0">None</span><span class="s2">,</span>
+    <span class="s1">additional_servers</span><span class="s2">=</span><span class="s0">None</span><span class="s2">,</span>
+    <span class="s1">additional_vms</span><span class="s2">=</span><span class="s0">None</span><span class="s2">,</span>
+    <span class="s1">additional_requirements_table</span><span class="s2">=</span><span class="s0">None</span>
+<span class="s2">):</span>
+    <span class="s3">&quot;&quot;&quot; 
+    Generates a Word document based on the given inputs and template. 
+    &quot;&quot;&quot;</span>
+
+    <span class="s1">doc </span><span class="s2">= </span><span class="s1">Document</span><span class="s2">(</span><span class="s1">template_path</span><span class="s2">)</span>
+
+    <span class="s6"># Add Title</span>
+
+    <span class="s1">title_text </span><span class="s2">= </span><span class="s4">f&quot;</span><span class="s0">{</span><span class="s1">customer_name</span><span class="s0">} </span><span class="s4">IT Infrastructure, HW, and VM Design Recommendations for Medical Imaging Solutions&quot;</span>
+    <span class="s1">title </span><span class="s2">= </span><span class="s1">doc</span><span class="s2">.</span><span class="s1">add_heading</span><span class="s2">(</span><span class="s1">title_text</span><span class="s2">, </span><span class="s1">level</span><span class="s2">=</span><span class="s5">1</span><span class="s2">)</span>
+    <span class="s1">title</span><span class="s2">.</span><span class="s1">alignment </span><span class="s2">= </span><span class="s1">WD_ALIGN_PARAGRAPH</span><span class="s2">.</span><span class="s1">CENTER</span>
+
+    <span class="s6"># Add introduction with bold formatting</span>
+    <span class="s1">intro_text </span><span class="s2">= </span><span class="s1">generate_introduction</span><span class="s2">(</span>
+        <span class="s1">customer_name</span><span class="s2">, </span><span class="s1">high_availability</span><span class="s2">, </span><span class="s1">nas_backup_details</span><span class="s2">, </span><span class="s1">tier_3_disks</span><span class="s2">, </span><span class="s1">gpu_specs</span><span class="s2">)</span>
+
+    <span class="s6"># Add Introduction to Document</span>
+    <span class="s1">add_introduction_to_document</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">intro_text</span><span class="s2">)</span>
+
+    <span class="s1">description_text </span><span class="s2">= (</span>
+        <span class="s4">&quot;This section outlines the **client requirements** and **system assumptions** that serve as the foundation &quot;</span>
+        <span class="s4">&quot;for the proposed design. Key inputs such as study sizes, annual growth rates, and system capacity are &quot;</span>
+        <span class="s4">&quot;explicitly detailed to ensure alignment with the operational goals and scalability requirements of the client. &quot;</span>
+        <span class="s4">&quot;The design is crafted to address both current needs and future expansions, ensuring a robust and adaptable &quot;</span>
+        <span class="s4">&quot;infrastructure tailored to PaxeraHealth imaging solutions.&quot;</span>
+    <span class="s2">)</span>
+
+    <span class="s1">add_table_with_no_split</span><span class="s2">(</span>
+        <span class="s1">doc</span><span class="s2">,</span>
+        <span class="s1">input_table</span><span class="s2">,</span>
+        <span class="s1">title</span><span class="s2">=</span><span class="s4">'Client Requirements and System Assumptions'</span><span class="s2">,</span>
+        <span class="s1">description</span><span class="s2">=</span><span class="s1">description_text</span>
+    <span class="s2">)</span>
+
+    <span class="s6"># Utility to add tables</span>
+    <span class="s0">if </span><span class="s1">storage_table </span><span class="s0">is not None</span><span class="s2">:</span>
+        <span class="s6"># Base description</span>
+        <span class="s1">storage_description </span><span class="s2">= (</span>
+            <span class="s4">&quot;The table below outlines the **Storage Architecture and Scalability Plan**, designed to meet the operational &quot;</span>
+            <span class="s4">&quot;and performance requirements of the system. The storage solution is categorized into distinct tiers to ensure &quot;</span>
+            <span class="s4">&quot;optimized data access and long-term reliability:</span><span class="s0">\n\n</span><span class="s4">&quot;</span>
+        <span class="s2">)</span>
+
+        <span class="s6"># Tier 1 Description</span>
+        <span class="s1">tier_1_description </span><span class="s2">= (</span>
+            <span class="s4">&quot;- **Tier 1: RAID 1 SSD (NVMe or M.2)**: High-speed, fault-tolerant storage dedicated to the operating system and database. &quot;</span>
+            <span class="s4">&quot;This tier ensures rapid access to critical system data and overall system stability.</span><span class="s0">\n</span><span class="s4">&quot;</span>
+        <span class="s2">)</span>
+
+        <span class="s6"># Check for Tier 2: Fast Image Storage in the storage table</span>
+        <span class="s1">tier_2_short_term_exists </span><span class="s2">= </span><span class="s1">any</span><span class="s2">(</span><span class="s4">&quot;Tier 2: Fast Image Storage (SSD RAID 5)&quot; </span><span class="s0">in </span><span class="s1">row </span><span class="s0">for </span><span class="s1">row </span><span class="s0">in </span><span class="s1">storage_table</span><span class="s2">)</span>
+
+        <span class="s0">if </span><span class="s1">tier_2_short_term_exists</span><span class="s2">:</span>
+            <span class="s6"># Tier 2: Short-Term Storage</span>
+            <span class="s1">tier_2_description </span><span class="s2">= (</span>
+                <span class="s4">&quot;- **Tier 2: Fast Image Storage (RAID 5 SSD - SAS or NLSAS SSD)**: Optimized for fast retrieval of frequently accessed imaging data. &quot;</span>
+                <span class="s4">&quot;This tier is configured with high-performance SSDs to ensure rapid data access for recent studies, typically retained for 6 months or 1 year.</span><span class="s0">\n</span><span class="s4">&quot;</span>
+            <span class="s2">)</span>
+
+            <span class="s6"># Tier 3: Long-Term Storage</span>
+            <span class="s1">tier_3_description </span><span class="s2">= (</span>
+                <span class="s4">&quot;- **Tier 3: Long-Term Storage (RAID 5 or 6 - SATA or NLSAS HDD)**: Scalable storage optimized for archiving historical imaging data. &quot;</span>
+                <span class="s4">&quot;This tier ensures data protection through redundancy and supports seamless access for low-frequency retrieval needs.</span><span class="s0">\n\n</span><span class="s4">&quot;</span>
+            <span class="s2">)</span>
+        <span class="s0">else</span><span class="s2">:</span>
+            <span class="s6"># If no short-term storage, rename long-term storage as Tier 2</span>
+            <span class="s1">tier_2_description </span><span class="s2">= (</span>
+                <span class="s4">&quot;- **Tier 2: Long-Term Storage (RAID 5 or 6 - SATA or NLSAS HDD)**: Scalable storage optimized for archiving historical imaging data. &quot;</span>
+                <span class="s4">&quot;This tier ensures data protection through redundancy and supports seamless access for low-frequency retrieval needs.</span><span class="s0">\n\n</span><span class="s4">&quot;</span>
+            <span class="s2">)</span>
+            <span class="s1">tier_3_description </span><span class="s2">= </span><span class="s4">&quot;&quot;  </span><span class="s6"># No Tier 3 if no short-term storage</span>
+
+        <span class="s6"># Compile descriptions</span>
+        <span class="s1">storage_description </span><span class="s2">+= </span><span class="s1">tier_1_description</span>
+        <span class="s1">storage_description </span><span class="s2">+= </span><span class="s1">tier_2_description</span>
+        <span class="s0">if </span><span class="s1">tier_2_short_term_exists</span><span class="s2">:</span>
+            <span class="s1">storage_description </span><span class="s2">+= </span><span class="s1">tier_3_description</span>
+
+        <span class="s6"># Final note</span>
+        <span class="s1">storage_description </span><span class="s2">+= (</span>
+            <span class="s4">&quot;This architecture balances performance, scalability, and cost-efficiency, ensuring seamless availability of imaging data to &quot;</span>
+            <span class="s4">&quot;support both operational and long-term requirements.&quot;</span>
+        <span class="s2">)</span>
+
+        <span class="s6"># Adding the updated table and description to the document</span>
+        <span class="s1">add_table_with_no_split</span><span class="s2">(</span>
+            <span class="s1">doc</span><span class="s2">,</span>
+            <span class="s1">storage_table</span><span class="s2">,</span>
+            <span class="s1">title</span><span class="s2">=</span><span class="s4">'Storage Architecture and Scalability Plan'</span><span class="s2">,</span>
+            <span class="s1">description</span><span class="s2">=</span><span class="s1">storage_description</span>
+        <span class="s2">)</span>
+
+    <span class="s6"># Add VM Recommendations</span>
+    <span class="s0">if not </span><span class="s1">results</span><span class="s2">.</span><span class="s1">empty</span><span class="s2">:</span>
+        <span class="s6"># Modify the DataFrame to adjust total row content</span>
+        <span class="s1">results </span><span class="s2">= </span><span class="s1">results</span><span class="s2">.</span><span class="s1">iloc</span><span class="s2">[:-</span><span class="s5">2</span><span class="s2">]</span>
+        <span class="s1">results</span><span class="s2">.</span><span class="s1">at</span><span class="s2">[</span><span class="s1">results</span><span class="s2">.</span><span class="s1">index</span><span class="s2">[-</span><span class="s5">1</span><span class="s2">], </span><span class="s4">&quot;Operating System&quot;</span><span class="s2">] = </span><span class="s4">&quot;&quot;</span>
+        <span class="s1">results</span><span class="s2">.</span><span class="s1">at</span><span class="s2">[</span><span class="s1">results</span><span class="s2">.</span><span class="s1">index</span><span class="s2">[-</span><span class="s5">1</span><span class="s2">], </span><span class="s1">results</span><span class="s2">.</span><span class="s1">columns</span><span class="s2">[</span><span class="s5">0</span><span class="s2">]] = </span><span class="s4">&quot;Total&quot;</span>
+
+        <span class="s6"># Core System VMs Section</span>
+        <span class="s1">gpu_text </span><span class="s2">= </span><span class="s4">&quot;including **AI capabilities**.&quot; </span><span class="s0">if </span><span class="s1">gpu_specs </span><span class="s0">else </span><span class="s4">&quot;&quot;</span>
+        <span class="s1">vm_description_text </span><span class="s2">= (</span>
+            <span class="s4">f&quot;The following table specifies the **Core Virtual Machine (VM) Configurations** required for **production workloads**. &quot;</span>
+            <span class="s4">f&quot;These configurations are designed to ensure **high performance**, **scalability**, and **reliability** for the core system </span><span class="s0">{</span><span class="s1">gpu_text</span><span class="s0">}</span><span class="s4">&quot;</span>
+        <span class="s2">)</span>
+        <span class="s1">add_table_with_no_split</span><span class="s2">(</span>
+            <span class="s1">doc</span><span class="s2">,</span>
+            <span class="s1">results</span><span class="s2">,</span>
+            <span class="s1">title</span><span class="s2">=</span><span class="s4">'Core Virtual Machine Configurations'</span><span class="s2">,</span>
+            <span class="s1">description</span><span class="s2">=</span><span class="s1">vm_description_text</span>
+        <span class="s2">)</span>
+
+        <span class="s6"># General Notes Section (formerly vCore Notes)</span>
+        <span class="s1">general_notes </span><span class="s2">= [</span>
+            <span class="s4">&quot;Each **vCore** represents a thread in the physical processor.&quot;</span><span class="s2">,</span>
+            <span class="s4">&quot;Physical processors typically support **two threads per core**, resulting in a **1:2 ratio** of physical cores to vCores.&quot;</span><span class="s2">,</span>
+            <span class="s4">&quot;This configuration ensures efficient utilization of processor resources, enabling **high performance** and **optimal workload distribution** in virtualized environments.&quot;</span><span class="s2">,</span>
+        <span class="s2">]</span>
+        <span class="s0">if </span><span class="s1">gpu_specs</span><span class="s2">:</span>
+            <span class="s6"># List of AI VM names to check in the results</span>
+            <span class="s1">ai_vm_names </span><span class="s2">= [</span>
+                <span class="s4">&quot;Organ Segmentator Docker&quot;</span><span class="s2">,</span>
+                <span class="s4">&quot;Lesion Segmentator 2D Docker&quot;</span><span class="s2">,</span>
+                <span class="s4">&quot;Lesion Segmentator 3D Docker&quot;</span><span class="s2">,</span>
+                <span class="s4">&quot;Speech-to-text Docker&quot;</span><span class="s2">,</span>
+                <span class="s4">&quot;AI ARK Manager&quot;</span><span class="s2">,</span>
+                <span class="s4">&quot;AI ARK LAB&quot;</span>
+            <span class="s2">]</span>
+
+            <span class="s6"># Extract AI VM names present in the results</span>
+            <span class="s1">ai_vms_present </span><span class="s2">= [</span><span class="s1">vm </span><span class="s0">for </span><span class="s1">vm </span><span class="s0">in </span><span class="s1">ai_vm_names </span><span class="s0">if </span><span class="s1">vm </span><span class="s0">in </span><span class="s1">results</span><span class="s2">[</span><span class="s4">&quot;VM Type&quot;</span><span class="s2">].</span><span class="s1">values</span><span class="s2">]</span>
+
+            <span class="s6"># Construct the note dynamically with highlighted AI VMs</span>
+            <span class="s0">if </span><span class="s1">ai_vms_present</span><span class="s2">:</span>
+                <span class="s1">general_notes</span><span class="s2">.</span><span class="s1">append</span><span class="s2">(</span>
+                    <span class="s4">&quot;The **Docker-based AI VMs** listed below are specifically designed for **AI processing tasks**, leveraging GPU acceleration for advanced functionalities:&quot;</span>
+                <span class="s2">)</span>
+                <span class="s0">for </span><span class="s1">ai_vm </span><span class="s0">in </span><span class="s1">ai_vms_present</span><span class="s2">:</span>
+                    <span class="s1">general_notes</span><span class="s2">.</span><span class="s1">append</span><span class="s2">(</span><span class="s4">f&quot;- </span><span class="s0">{</span><span class="s1">ai_vm</span><span class="s0">}</span><span class="s4">&quot;</span><span class="s2">)</span>
+
+        <span class="s1">doc</span><span class="s2">.</span><span class="s1">add_heading</span><span class="s2">(</span><span class="s4">'General Notes'</span><span class="s2">, </span><span class="s1">level</span><span class="s2">=</span><span class="s5">3</span><span class="s2">)</span>
+        <span class="s0">for </span><span class="s1">note </span><span class="s0">in </span><span class="s1">general_notes</span><span class="s2">:</span>
+            <span class="s1">add_bullet_points_with_bold</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">note</span><span class="s2">.</span><span class="s1">strip</span><span class="s2">(), </span><span class="s4">&quot;&quot;</span><span class="s2">,</span><span class="s1">force_bullet</span><span class="s2">=</span><span class="s0">True</span><span class="s2">)</span>
+
+        <span class="s6"># Recommended Resources Section for Core VMs</span>
+        <span class="s1">recommended_resources_description </span><span class="s2">= (</span>
+            <span class="s4">&quot;The table below outlines the **recommended system specifications** for the core virtual machines. &quot;</span>
+            <span class="s4">&quot;These specifications are designed to ensure **reliable** and **efficient operation** of the production environment, &quot;</span>
+            <span class="s4">&quot;meeting **performance demands** and **scalability requirements**.&quot;</span>
+        <span class="s2">)</span>
+        <span class="s1">add_table_with_no_split</span><span class="s2">(</span>
+            <span class="s1">doc</span><span class="s2">,</span>
+            <span class="s1">df_comparison</span><span class="s2">,</span>
+            <span class="s1">title</span><span class="s2">=</span><span class="s4">'Recommended Resources for Core VMs'</span><span class="s2">,</span>
+            <span class="s1">description</span><span class="s2">=</span><span class="s1">recommended_resources_description</span><span class="s2">.</span><span class="s1">strip</span><span class="s2">()</span>
+        <span class="s2">)</span>
+
+        <span class="s6"># Auxiliary VMs Section (if applicable)</span>
+        <span class="s0">if </span><span class="s1">additional_vm_table </span><span class="s0">is not None</span><span class="s2">:</span>
+            <span class="s1">auxiliary_vm_purpose </span><span class="s2">= </span><span class="s4">&quot;management operations only&quot; </span><span class="s0">if not </span><span class="s1">additional_vms </span><span class="s0">else </span><span class="s4">&quot;management and testing/training operations&quot;</span>
+            <span class="s1">additional_vm_description </span><span class="s2">= (</span>
+                <span class="s4">f&quot;The table below outlines the **Auxiliary Virtual Machine (VM) Configurations** tailored to handle **</span><span class="s0">{</span><span class="s1">auxiliary_vm_purpose</span><span class="s0">}</span><span class="s4">**. &quot;</span>
+                <span class="s4">f&quot;These VMs are **isolated** from the production environment to ensure **uninterrupted performance** and **flexibility**.&quot;</span>
+            <span class="s2">)</span>
+            <span class="s1">add_table_with_no_split</span><span class="s2">(</span>
+                <span class="s1">doc</span><span class="s2">,</span>
+                <span class="s1">additional_vm_table</span><span class="s2">,</span>
+                <span class="s1">title</span><span class="s2">=</span><span class="s4">'Auxiliary Virtual Machine Configurations'</span><span class="s2">,</span>
+                <span class="s1">description</span><span class="s2">=</span><span class="s1">additional_vm_description</span>
+            <span class="s2">)</span>
+
+        <span class="s6"># Additional VM Notes</span>
+        <span class="s0">if </span><span class="s1">additional_vms</span><span class="s2">:</span>
+            <span class="s1">doc</span><span class="s2">.</span><span class="s1">add_heading</span><span class="s2">(</span><span class="s4">'Additional VM Notes'</span><span class="s2">, </span><span class="s1">level</span><span class="s2">=</span><span class="s5">3</span><span class="s2">)</span>
+            <span class="s0">if </span><span class="s1">isinstance</span><span class="s2">(</span><span class="s1">additional_vm_notes</span><span class="s2">, </span><span class="s1">list</span><span class="s2">):</span>
+                <span class="s0">for </span><span class="s1">note </span><span class="s0">in </span><span class="s1">additional_vm_notes</span><span class="s2">:</span>
+                    <span class="s1">add_bullet_points_with_bold</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">note</span><span class="s2">.</span><span class="s1">strip</span><span class="s2">(), </span><span class="s4">&quot;&quot;</span><span class="s2">)</span>
+            <span class="s0">elif </span><span class="s1">isinstance</span><span class="s2">(</span><span class="s1">additional_vm_notes</span><span class="s2">, </span><span class="s1">dict</span><span class="s2">):</span>
+                <span class="s0">for </span><span class="s1">note </span><span class="s0">in </span><span class="s1">additional_vm_notes</span><span class="s2">.</span><span class="s1">values</span><span class="s2">():</span>
+                    <span class="s1">add_bullet_points_with_bold</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">note</span><span class="s2">.</span><span class="s1">strip</span><span class="s2">(), </span><span class="s4">&quot;&quot;</span><span class="s2">)</span>
+
+        <span class="s6"># Recommended Resources for Auxiliary VMs Section</span>
+        <span class="s0">if </span><span class="s1">additional_requirements_table </span><span class="s0">is not None</span><span class="s2">:</span>
+            <span class="s1">additional_vm_description </span><span class="s2">= (</span>
+                <span class="s4">&quot;The table below outlines the **recommended system specifications** for the auxiliary virtual machines. &quot;</span>
+                <span class="s4">&quot;These specifications ensure that sufficient resources are allocated to auxiliary tasks without impacting core production workloads.&quot;</span>
+            <span class="s2">)</span>
+            <span class="s1">add_table_with_no_split</span><span class="s2">(</span>
+                <span class="s1">doc</span><span class="s2">,</span>
+                <span class="s1">additional_requirements_table</span><span class="s2">,</span>
+                <span class="s1">title</span><span class="s2">=</span><span class="s4">'Recommended Resources for Auxiliary VMs'</span><span class="s2">,</span>
+                <span class="s1">description</span><span class="s2">=</span><span class="s1">additional_vm_description</span><span class="s2">.</span><span class="s1">strip</span><span class="s2">()</span>
+            <span class="s2">)</span>
+
+    <span class="s6"># Add Physical System Design</span>
+    <span class="s0">if </span><span class="s1">physical_design</span><span class="s2">:</span>
+        <span class="s6"># Add main heading for Physical System Design</span>
+        <span class="s1">doc</span><span class="s2">.</span><span class="s1">add_heading</span><span class="s2">(</span><span class="s4">'Physical System Design'</span><span class="s2">, </span><span class="s1">level</span><span class="s2">=</span><span class="s5">3</span><span class="s2">)</span>
+
+        <span class="s6"># Determine the server setup and structure the introduction</span>
+        <span class="s0">if </span><span class="s1">high_availability</span><span class="s2">:</span>
+            <span class="s1">server_setup_text </span><span class="s2">= (</span>
+                <span class="s4">&quot;- **Server Configuration**: The system is designed with **multiple servers** in a **High Availability (HA)** setup. &quot;</span>
+                <span class="s4">&quot;These servers are connected to a **shared DAS/SAN (Direct-Attached Storage/Storage Area Network)** to ensure fault tolerance, scalability, and continuous operation.&quot;</span>
+            <span class="s2">)</span>
+        <span class="s0">else</span><span class="s2">:</span>
+            <span class="s1">server_setup_text </span><span class="s2">= (</span>
+                <span class="s4">&quot;- **Server Configuration**: The system uses a **standard server** with **built-in storage**, optimized for cost-effectiveness while maintaining reliability.&quot;</span>
+            <span class="s2">)</span>
+
+        <span class="s6"># Include GPUs if selected</span>
+        <span class="s1">gpu_text </span><span class="s2">= </span><span class="s4">&quot;- **GPU-Enabled Servers**: Designed to support advanced AI functionalities such as segmentators and speech-to-text modules.&quot; </span><span class="s0">if </span><span class="s1">gpu_specs </span><span class="s0">else </span><span class="s4">&quot;&quot;</span>
+
+        <span class="s6"># Include additional VMs dynamically based on selection</span>
+        <span class="s1">additional_vm_text </span><span class="s2">= </span><span class="s4">&quot;&quot;</span>
+        <span class="s0">if </span><span class="s1">additional_vms</span><span class="s2">:</span>
+            <span class="s1">vm_purpose </span><span class="s2">= []</span>
+            <span class="s0">if </span><span class="s1">any</span><span class="s2">(</span><span class="s1">vm</span><span class="s2">[</span><span class="s4">&quot;VM Type&quot;</span><span class="s2">] == </span><span class="s4">&quot;Test Environment VM (Ultima, PACS, Broker)&quot; </span><span class="s0">for </span><span class="s1">vm </span><span class="s0">in </span><span class="s1">additional_vms</span><span class="s2">):</span>
+                <span class="s1">vm_purpose</span><span class="s2">.</span><span class="s1">append</span><span class="s2">(</span><span class="s4">&quot;testing and training&quot;</span><span class="s2">)</span>
+            <span class="s0">if </span><span class="s1">any</span><span class="s2">(</span><span class="s1">vm</span><span class="s2">[</span><span class="s4">&quot;VM Type&quot;</span><span class="s2">] == </span><span class="s4">&quot;Management VM (Backup, Antivirus, vCenter)&quot; </span><span class="s0">for </span><span class="s1">vm </span><span class="s0">in </span><span class="s1">additional_vms</span><span class="s2">):</span>
+                <span class="s1">vm_purpose</span><span class="s2">.</span><span class="s1">append</span><span class="s2">(</span><span class="s4">&quot;management&quot;</span><span class="s2">)</span>
+            <span class="s1">additional_vm_text </span><span class="s2">= </span><span class="s4">f&quot;- **Additional Servers**: Configured to support </span><span class="s0">{</span><span class="s4">', '</span><span class="s2">.</span><span class="s1">join</span><span class="s2">(</span><span class="s1">vm_purpose</span><span class="s2">)</span><span class="s0">} </span><span class="s4">operations. These servers ensure flexibility and uninterrupted production workloads.&quot;</span>
+
+        <span class="s6"># AI Modules based on selection</span>
+        <span class="s1">selected_ai_modules </span><span class="s2">= [</span>
+            <span class="s4">&quot;Organ Segmentator Docker&quot;</span><span class="s2">,</span>
+            <span class="s4">&quot;Lesion Segmentator 2D Docker&quot;</span><span class="s2">,</span>
+            <span class="s4">&quot;Lesion Segmentator 3D Docker&quot;</span><span class="s2">,</span>
+            <span class="s4">&quot;Speech-to-text Docker&quot;</span><span class="s2">,</span>
+            <span class="s4">&quot;AI ARK Manager&quot;</span><span class="s2">,</span>
+            <span class="s4">&quot;AI ARK LAB&quot;</span>
+        <span class="s2">]</span>
+        <span class="s1">ai_modules_in_use </span><span class="s2">= [</span><span class="s1">module </span><span class="s0">for </span><span class="s1">module </span><span class="s0">in </span><span class="s1">selected_ai_modules </span><span class="s0">if </span><span class="s1">module </span><span class="s0">in </span><span class="s1">physical_design</span><span class="s2">]</span>
+        <span class="s1">ai_text </span><span class="s2">= (</span>
+            <span class="s4">&quot;- **AI Modules**: The system includes the following AI components: &quot;</span>
+            <span class="s2">+ </span><span class="s4">&quot;, &quot;</span><span class="s2">.</span><span class="s1">join</span><span class="s2">(</span><span class="s4">f&quot;**</span><span class="s0">{</span><span class="s1">module</span><span class="s0">}</span><span class="s4">**&quot; </span><span class="s0">for </span><span class="s1">module </span><span class="s0">in </span><span class="s1">ai_modules_in_use</span><span class="s2">)</span>
+            <span class="s0">if </span><span class="s1">ai_modules_in_use</span>
+            <span class="s0">else </span><span class="s4">&quot;&quot;</span>
+        <span class="s2">)</span>
+
+        <span class="s6"># Include NAS backup solution if selected</span>
+        <span class="s1">nas_text </span><span class="s2">= </span><span class="s4">&quot;- **Backup Solution**: Includes a **NAS backup system** to provide redundancy and long-term data protection.&quot; </span><span class="s0">if </span><span class="s1">nas_backup_details </span><span class="s0">else </span><span class="s4">&quot;&quot;</span>
+
+        <span class="s6"># Combine all system components into structured bullet points</span>
+        <span class="s1">system_components </span><span class="s2">= [</span>
+            <span class="s1">server_setup_text</span><span class="s2">,</span>
+            <span class="s1">gpu_text</span><span class="s2">,</span>
+            <span class="s1">additional_vm_text</span><span class="s2">,</span>
+            <span class="s1">ai_text</span><span class="s2">,</span>
+            <span class="s1">nas_text</span><span class="s2">,</span>
+        <span class="s2">]</span>
+        <span class="s1">system_components </span><span class="s2">= [</span><span class="s1">comp </span><span class="s0">for </span><span class="s1">comp </span><span class="s0">in </span><span class="s1">system_components </span><span class="s0">if </span><span class="s1">comp</span><span class="s2">]  </span><span class="s6"># Filter out empty lines</span>
+
+        <span class="s6"># Add structured introduction for system setup</span>
+        <span class="s1">add_paragraph_with_bold</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s4">&quot;The proposed system comprises the following hardware setup:&quot;</span><span class="s2">)</span>
+        <span class="s0">for </span><span class="s1">component </span><span class="s0">in </span><span class="s1">system_components</span><span class="s2">:</span>
+            <span class="s1">add_bullet_points_with_bold</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">component</span><span class="s2">.</span><span class="s1">strip</span><span class="s2">(), </span><span class="s4">&quot;&quot;</span><span class="s2">, </span><span class="s1">force_bullet</span><span class="s2">=</span><span class="s0">True</span><span class="s2">)</span>
+
+        <span class="s6"># Add adaptability note</span>
+        <span class="s1">adaptability_note </span><span class="s2">= (</span>
+            <span class="s4">&quot;This hardware setup can be deployed in the client's data center, provided equivalent resources and functionalities are allocated &quot;</span>
+            <span class="s4">&quot;to maintain similar performance and operational reliability.&quot;</span>
+        <span class="s2">)</span>
+        <span class="s1">add_paragraph_with_bold</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">adaptability_note</span><span class="s2">)</span>
+
+        <span class="s6"># Process Physical Design Details</span>
+        <span class="s0">if </span><span class="s1">physical_design</span><span class="s2">.</span><span class="s1">strip</span><span class="s2">():</span>
+            <span class="s1">design_lines </span><span class="s2">= </span><span class="s1">physical_design</span><span class="s2">.</span><span class="s1">strip</span><span class="s2">().</span><span class="s1">split</span><span class="s2">(</span><span class="s4">&quot;</span><span class="s0">\n</span><span class="s4">&quot;</span><span class="s2">)</span>
+            <span class="s0">if </span><span class="s1">design_lines</span><span class="s2">:</span>
+                <span class="s1">subheading </span><span class="s2">= </span><span class="s1">design_lines</span><span class="s2">[</span><span class="s5">0</span><span class="s2">].</span><span class="s1">strip</span><span class="s2">().</span><span class="s1">rstrip</span><span class="s2">(</span><span class="s4">&quot;:&quot;</span><span class="s2">)</span>
+                <span class="s1">remaining_lines </span><span class="s2">= </span><span class="s4">&quot;</span><span class="s0">\n</span><span class="s4">&quot;</span><span class="s2">.</span><span class="s1">join</span><span class="s2">(</span><span class="s1">design_lines</span><span class="s2">[</span><span class="s5">1</span><span class="s2">:])</span>
+                <span class="s1">add_bullet_points_with_bold</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">remaining_lines</span><span class="s2">, </span><span class="s1">subheading</span><span class="s2">)</span>
+
+        <span class="s6"># Add Storage Design</span>
+
+        <span class="s6"># Add Storage Design</span>
+        <span class="s1">doc</span><span class="s2">.</span><span class="s1">add_heading</span><span class="s2">(</span><span class="s4">'Storage Design'</span><span class="s2">, </span><span class="s1">level</span><span class="s2">=</span><span class="s5">3</span><span class="s2">)</span>
+
+        <span class="s6"># Storage Type</span>
+        <span class="s1">storage_design_text </span><span class="s2">= (</span>
+            <span class="s4">&quot;The storage system leverages **DAS/SAN (Direct-Attached Storage/Storage Area Network)** configurations to support high availability and scalability. &quot;</span>
+            <span class="s4">&quot;This design is tailored to accommodate large-scale medical imaging workloads while ensuring redundancy and continuous access to critical data.&quot;</span>
+        <span class="s2">) </span><span class="s0">if </span><span class="s1">high_availability </span><span class="s0">else </span><span class="s2">(</span>
+            <span class="s4">&quot;The storage system uses **built-in storage** with RAID configurations to provide reliable and cost-effective solutions for smaller-scale operations. &quot;</span>
+            <span class="s4">&quot;This design focuses on meeting the operational needs of single-server environments.&quot;</span>
+        <span class="s2">)</span>
+        <span class="s1">add_paragraph_with_bold</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">storage_design_text</span><span class="s2">)</span>
+
+        <span class="s6"># Add Storage Tiers</span>
+        <span class="s1">tier_1_text </span><span class="s2">= </span><span class="s4">f&quot;&quot;&quot;</span>
+          <span class="s4">**Tier 1**: OS &amp; DB (SSD RAID 1)</span>
+          <span class="s4">SSD Drives: 2x </span><span class="s0">{</span><span class="s1">raid_1_storage_tb</span><span class="s0">:</span><span class="s4">.2f</span><span class="s0">} </span><span class="s4">TB</span>
+          <span class="s4">&quot;&quot;&quot;</span>
+
+        <span class="s0">if </span><span class="s1">tier_2_disks </span><span class="s0">is not None and </span><span class="s1">tier_2_disk_size </span><span class="s0">is not None and </span><span class="s1">tier_3_disk_size </span><span class="s0">is not </span><span class="s5">0</span><span class="s2">:</span>
+            <span class="s6"># Add Tier 2 and Tier 3 as separate sections</span>
+            <span class="s1">tier_2_text </span><span class="s2">= </span><span class="s4">f&quot;&quot;&quot;</span>
+              <span class="s4">**Tier 2**: Fast Image Storage (SSD RAID 5)</span>
+              <span class="s4">SSD Drives: </span><span class="s0">{</span><span class="s1">tier_2_disks</span><span class="s0">}</span><span class="s4">x </span><span class="s0">{</span><span class="s1">tier_2_disk_size</span><span class="s0">:</span><span class="s4">.2f</span><span class="s0">} </span><span class="s4">TB</span>
+              <span class="s4">&quot;&quot;&quot;</span>
+            <span class="s1">tier_3_text </span><span class="s2">= </span><span class="s4">f&quot;&quot;&quot;</span>
+              <span class="s4">**Tier 3**: Long-Term Storage (HDD RAID 5)</span>
+              <span class="s4">HDD Drives: </span><span class="s0">{</span><span class="s1">tier_3_disks</span><span class="s0">}</span><span class="s4">x </span><span class="s0">{</span><span class="s1">tier_3_disk_size</span><span class="s0">:</span><span class="s4">.2f</span><span class="s0">} </span><span class="s4">TB</span>
+              <span class="s4">&quot;&quot;&quot;</span>
+            <span class="s1">add_bullet_points_with_bold</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">tier_1_text </span><span class="s2">+ </span><span class="s1">tier_2_text </span><span class="s2">+ </span><span class="s1">tier_3_text</span><span class="s2">, </span><span class="s4">&quot;&quot;</span><span class="s2">)</span>
+        <span class="s0">else</span><span class="s2">:</span>
+            <span class="s6"># Promote Tier 3 to Tier 2 if Tier 2 doesn't exist</span>
+            <span class="s0">if </span><span class="s1">tier_3_disks </span><span class="s0">is  </span><span class="s5">0 </span><span class="s0">and </span><span class="s1">tier_3_disk_size </span><span class="s0">is  </span><span class="s5">0</span><span class="s2">:</span>
+                <span class="s1">tier_2_promoted_text </span><span class="s2">= </span><span class="s4">f&quot;&quot;&quot;</span>
+                  <span class="s4">**Tier 2**: Long-Term Storage (HDD RAID 5)</span>
+                  <span class="s4">HDD Drives: </span><span class="s0">{</span><span class="s1">tier_2_disks</span><span class="s0">}</span><span class="s4">x </span><span class="s0">{</span><span class="s1">tier_2_disk_size</span><span class="s0">:</span><span class="s4">.2f</span><span class="s0">} </span><span class="s4">TB</span>
+                  <span class="s4">&quot;&quot;&quot;</span>
+                <span class="s1">add_bullet_points_with_bold</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">tier_1_text </span><span class="s2">+ </span><span class="s1">tier_2_promoted_text</span><span class="s2">, </span><span class="s4">&quot;&quot;</span><span class="s2">)</span>
+            <span class="s0">else</span><span class="s2">:</span>
+                <span class="s6"># Handle cases where no Tier 2 or Tier 3 details are provided</span>
+                <span class="s1">add_bullet_points_with_bold</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">tier_1_text</span><span class="s2">, </span><span class="s4">&quot;&quot;</span><span class="s2">)</span>
+
+        <span class="s6"># Add Test Server Details</span>
+        <span class="s0">if </span><span class="s1">additional_vms</span><span class="s2">:</span>
+            <span class="s1">doc</span><span class="s2">.</span><span class="s1">add_heading</span><span class="s2">(</span><span class="s4">'Test and Management Servers'</span><span class="s2">, </span><span class="s1">level</span><span class="s2">=</span><span class="s5">3</span><span class="s2">)</span>
+            <span class="s0">for </span><span class="s1">server </span><span class="s0">in </span><span class="s1">additional_servers</span><span class="s2">:</span>
+                <span class="s1">server_details </span><span class="s2">= </span><span class="s4">f&quot;&quot;&quot;</span>
+                <span class="s4">**Server:**</span>
+                <span class="s4">- **Processors**: </span><span class="s0">{</span><span class="s1">server</span><span class="s2">[</span><span class="s4">'Processors'</span><span class="s2">]</span><span class="s0">}</span>
+                <span class="s4">- **Total CPU**: </span><span class="s0">{</span><span class="s1">server</span><span class="s2">[</span><span class="s4">'Total Cores'</span><span class="s2">]</span><span class="s0">} </span><span class="s4">Cores / </span><span class="s0">{</span><span class="s1">server</span><span class="s2">[</span><span class="s4">'Total Threads'</span><span class="s2">]</span><span class="s0">} </span><span class="s4">Threads</span>
+                <span class="s4">- **RAM**: </span><span class="s0">{</span><span class="s1">server</span><span class="s2">[</span><span class="s4">'RAM'</span><span class="s2">]</span><span class="s0">} </span><span class="s4">GB</span>
+                <span class="s4">&quot;&quot;&quot;</span>
+                <span class="s1">add_bullet_points_with_bold</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">server_details</span><span class="s2">.</span><span class="s1">strip</span><span class="s2">(), </span><span class="s4">&quot;&quot;</span><span class="s2">, </span><span class="s1">force_bullet</span><span class="s2">=</span><span class="s0">True</span><span class="s2">)</span>
+        <span class="s6"># Add NAS Backup Details</span>
+        <span class="s0">if </span><span class="s1">nas_backup_details</span><span class="s2">:</span>
+            <span class="s1">doc</span><span class="s2">.</span><span class="s1">add_heading</span><span class="s2">(</span><span class="s4">'Backup Storage (NAS)'</span><span class="s2">, </span><span class="s1">level</span><span class="s2">=</span><span class="s5">3</span><span class="s2">)</span>
+            <span class="s1">nas_backup_text </span><span class="s2">= (</span>
+                <span class="s4">&quot;The NAS backup solution is designed to provide additional redundancy and facilitate seamless data recovery. &quot;</span>
+                <span class="s4">&quot;This backup configuration ensures long-term protection for critical medical imaging data, safeguarding against &quot;</span>
+                <span class="s4">&quot;unexpected system failures or data loss.&quot;</span>
+            <span class="s2">)</span>
+            <span class="s1">add_paragraph_with_bold</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">nas_backup_text</span><span class="s2">)</span>
+
+            <span class="s1">backup_lines </span><span class="s2">= </span><span class="s1">nas_backup_details</span><span class="s2">.</span><span class="s1">strip</span><span class="s2">().</span><span class="s1">split</span><span class="s2">(</span><span class="s4">&quot;</span><span class="s0">\n</span><span class="s4">&quot;</span><span class="s2">)</span>
+            <span class="s0">if </span><span class="s1">len</span><span class="s2">(</span><span class="s1">backup_lines</span><span class="s2">) &gt; </span><span class="s5">1</span><span class="s2">:</span>
+                <span class="s1">remaining_lines </span><span class="s2">= </span><span class="s4">&quot;</span><span class="s0">\n</span><span class="s4">&quot;</span><span class="s2">.</span><span class="s1">join</span><span class="s2">(</span><span class="s1">backup_lines</span><span class="s2">[</span><span class="s5">1</span><span class="s2">:])</span>
+                <span class="s1">add_bullet_points_with_bold</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">remaining_lines</span><span class="s2">, </span><span class="s4">&quot;&quot;</span><span class="s2">, </span><span class="s1">force_bullet</span><span class="s2">=</span><span class="s0">True</span><span class="s2">)</span>
+
+        <span class="s6"># Add NAS Backup Details</span>
+        <span class="s0">if </span><span class="s1">nas_backup_details</span><span class="s2">:</span>
+            <span class="s1">doc</span><span class="s2">.</span><span class="s1">add_heading</span><span class="s2">(</span><span class="s4">'Backup Storage (NAS)'</span><span class="s2">, </span><span class="s1">level</span><span class="s2">=</span><span class="s5">3</span><span class="s2">)</span>
+            <span class="s1">nas_backup_text </span><span class="s2">= (</span>
+                <span class="s4">&quot;The NAS backup solution is designed to provide additional redundancy and facilitate seamless data recovery. &quot;</span>
+                <span class="s4">&quot;This backup configuration ensures long-term protection for critical medical imaging data, safeguarding against &quot;</span>
+                <span class="s4">&quot;unexpected system failures or data loss.&quot;</span>
+            <span class="s2">)</span>
+            <span class="s1">add_paragraph_with_bold</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">nas_backup_text</span><span class="s2">)</span>
+
+            <span class="s1">backup_lines </span><span class="s2">= </span><span class="s1">nas_backup_details</span><span class="s2">.</span><span class="s1">strip</span><span class="s2">().</span><span class="s1">split</span><span class="s2">(</span><span class="s4">&quot;</span><span class="s0">\n</span><span class="s4">&quot;</span><span class="s2">)</span>
+            <span class="s0">if </span><span class="s1">len</span><span class="s2">(</span><span class="s1">backup_lines</span><span class="s2">) &gt; </span><span class="s5">1</span><span class="s2">:</span>
+                <span class="s1">remaining_lines </span><span class="s2">= </span><span class="s4">&quot;</span><span class="s0">\n</span><span class="s4">&quot;</span><span class="s2">.</span><span class="s1">join</span><span class="s2">(</span><span class="s1">backup_lines</span><span class="s2">[</span><span class="s5">1</span><span class="s2">:])</span>
+                <span class="s1">add_bullet_points_with_bold</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">remaining_lines</span><span class="s2">, </span><span class="s4">&quot;&quot;</span><span class="s2">, </span><span class="s1">force_bullet</span><span class="s2">=</span><span class="s0">True</span><span class="s2">)</span>
+    <span class="s1">description_text </span><span class="s2">= (</span>
+                    <span class="s4">&quot;The table below lists the third-party licenses required to support the proposed infrastructure, &quot;</span>
+                    <span class="s4">&quot;ensuring compatibility and reliability.&quot;</span>
+     <span class="s2">)</span>
+    <span class="s1">add_table_with_no_split</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">third_party_licenses</span><span class="s2">, </span><span class="s1">title</span><span class="s2">=</span><span class="s4">'Third Party Licenses'</span><span class="s2">, </span><span class="s1">description</span><span class="s2">=</span><span class="s1">description_text</span><span class="s2">)</span>
+    <span class="s6"># Add Notes Section</span>
+    <span class="s1">add_bullet_points_with_bold</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">notes</span><span class="s2">[</span><span class="s4">'licensing_notes'</span><span class="s2">], </span><span class="s4">'Licensing Notes'</span><span class="s2">,</span><span class="s1">force_bullet</span><span class="s2">=</span><span class="s0">True</span><span class="s2">)</span>
+    <span class="s1">add_bullet_points_with_bold</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">notes</span><span class="s2">[</span><span class="s4">'sizing_notes'</span><span class="s2">], </span><span class="s4">'Sizing Notes'</span><span class="s2">)</span>
+    <span class="s1">add_bullet_points_with_bold</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">notes</span><span class="s2">[</span><span class="s4">'technical_requirements'</span><span class="s2">], </span><span class="s4">'Technical Requirements'</span><span class="s2">)</span>
+    <span class="s1">add_bullet_points_with_bold</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">notes</span><span class="s2">[</span><span class="s4">'network_requirements'</span><span class="s2">], </span><span class="s4">'Network Requirements (LAN)'</span><span class="s2">)</span>
+    <span class="s6"># Add GPU Requirements (if provided)</span>
+    <span class="s6"># GPU Requirements Section</span>
+    <span class="s0">if </span><span class="s1">gpu_specs</span><span class="s2">:</span>
+        <span class="s1">doc</span><span class="s2">.</span><span class="s1">add_heading</span><span class="s2">(</span><span class="s4">'GPU Requirements'</span><span class="s2">, </span><span class="s1">level</span><span class="s2">=</span><span class="s5">3</span><span class="s2">)</span>
+
+        <span class="s6"># Add descriptive text for GPU Requirements</span>
+        <span class="s1">add_paragraph_with_bold</span><span class="s2">(</span>
+            <span class="s1">doc</span><span class="s2">,</span>
+            <span class="s4">&quot;The system leverages powerful GPUs to support advanced AI functionalities, enabling seamless processing &quot;</span>
+            <span class="s4">&quot;of resource-intensive tasks like segmentation and speech-to-text analysis. These GPUs are optimized for &quot;</span>
+            <span class="s4">&quot;high-performance medical imaging workloads.&quot;</span>
+        <span class="s2">)</span>
+
+        <span class="s6"># Add GPU details as bullet points with bold formatting</span>
+        <span class="s1">add_bullet_points_with_bold</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">gpu_specs</span><span class="s2">, </span><span class="s4">&quot;&quot;</span><span class="s2">, </span><span class="s1">force_bullet</span><span class="s2">=</span><span class="s0">True</span><span class="s2">)</span>
+
+    <span class="s6"># Add Gateway Specifications (if provided)</span>
+    <span class="s0">if </span><span class="s1">gateway_specs</span><span class="s2">:</span>
+        <span class="s1">doc</span><span class="s2">.</span><span class="s1">add_heading</span><span class="s2">(</span><span class="s4">'Gateway Specifications'</span><span class="s2">, </span><span class="s1">level</span><span class="s2">=</span><span class="s5">3</span><span class="s2">)</span>
+
+        <span class="s6"># Add a descriptive paragraph for the Gateway section</span>
+        <span class="s1">gateway_text </span><span class="s2">= (</span>
+            <span class="s4">&quot;The gateway is responsible for acquiring and transmitting images and data from the modalities &quot;</span>
+            <span class="s4">&quot;to the PACS system at the main site. This ensures secure, efficient data transfer and seamless system interoperability.&quot;</span>
+        <span class="s2">)</span>
+        <span class="s1">add_paragraph_with_bold</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">gateway_text</span><span class="s2">)</span>
+
+        <span class="s6"># Add Gateway details as bullet points using the existing utility function</span>
+        <span class="s1">add_bullet_points_with_bold</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">gateway_specs</span><span class="s2">, </span><span class="s4">&quot;&quot;</span><span class="s2">)</span>
+
+    <span class="s6"># Workstation Specifications Section</span>
+    <span class="s0">if </span><span class="s1">diagnostic_specs </span><span class="s0">is not None or </span><span class="s1">viewing_specs </span><span class="s0">is not None or </span><span class="s1">ris_specs </span><span class="s0">is not None</span><span class="s2">:</span>
+        <span class="s1">doc</span><span class="s2">.</span><span class="s1">add_heading</span><span class="s2">(</span><span class="s4">'Workstation Specifications'</span><span class="s2">, </span><span class="s1">level</span><span class="s2">=</span><span class="s5">2</span><span class="s2">)</span>
+
+        <span class="s6"># Add descriptive text for workstation specifications</span>
+        <span class="s1">add_paragraph_with_bold</span><span class="s2">(</span>
+            <span class="s1">doc</span><span class="s2">,</span>
+            <span class="s4">&quot;The proposed workstations are tailored to meet the demands of high-resolution medical imaging and efficient &quot;</span>
+            <span class="s4">&quot;clinical workflows. Each workstation is equipped with state-of-the-art hardware to ensure optimal performance &quot;</span>
+            <span class="s4">&quot;and user satisfaction.&quot;</span>
+        <span class="s2">)</span>
+
+        <span class="s6"># Add Diagnostic Workstation Specifications</span>
+        <span class="s0">if </span><span class="s1">diagnostic_specs </span><span class="s0">is not None</span><span class="s2">:</span>
+            <span class="s1">add_table_with_no_split</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">diagnostic_specs</span><span class="s2">, </span><span class="s1">title</span><span class="s2">=</span><span class="s4">'Diagnostic Workstation'</span><span class="s2">)</span>
+
+        <span class="s6"># Add Viewing Workstation Specifications</span>
+        <span class="s0">if </span><span class="s1">viewing_specs </span><span class="s0">is not None</span><span class="s2">:</span>
+            <span class="s1">add_paragraph_with_bold</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s4">&quot;**Viewing Workstation Specifications**:&quot;</span><span class="s2">)</span>
+            <span class="s1">add_table_with_no_split</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">viewing_specs</span><span class="s2">, </span><span class="s1">title</span><span class="s2">=</span><span class="s4">'Viewing Workstation'</span><span class="s2">)</span>
+
+        <span class="s6"># Add RIS Workstation Specifications</span>
+        <span class="s0">if </span><span class="s1">ris_specs </span><span class="s0">is not None</span><span class="s2">:</span>
+            <span class="s1">add_paragraph_with_bold</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s4">&quot;**RIS Workstation Specifications**:&quot;</span><span class="s2">)</span>
+            <span class="s1">add_table_with_no_split</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">ris_specs</span><span class="s2">, </span><span class="s1">title</span><span class="s2">=</span><span class="s4">'RIS Workstation'</span><span class="s2">)</span>
+    <span class="s1">add_bullet_points_with_bold</span><span class="s2">(</span><span class="s1">doc</span><span class="s2">, </span><span class="s1">notes</span><span class="s2">[</span><span class="s4">'minimum_requirements'</span><span class="s2">], </span><span class="s4">' Requirements &amp; Recommendations'</span><span class="s2">)</span>
+
+    <span class="s6"># Save to a buffer and return</span>
+    <span class="s1">buffer </span><span class="s2">= </span><span class="s1">BytesIO</span><span class="s2">()</span>
+    <span class="s1">doc</span><span class="s2">.</span><span class="s1">save</span><span class="s2">(</span><span class="s1">buffer</span><span class="s2">)</span>
+    <span class="s1">buffer</span><span class="s2">.</span><span class="s1">seek</span><span class="s2">(</span><span class="s5">0</span><span class="s2">)</span>
+    <span class="s0">return </span><span class="s1">buffer</span>
+</pre>
+</body>
+</html>

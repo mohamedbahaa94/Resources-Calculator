@@ -1,6 +1,6 @@
 import streamlit as st
 
-st.title("Imaging Center Bandwidth Estimator")
+st.title("PaxeraHealth Remote Site Bandwidth Estimator")
 
 # Input fields
 study_volume = st.number_input("Annual Study Volume", min_value=1, value=100000)

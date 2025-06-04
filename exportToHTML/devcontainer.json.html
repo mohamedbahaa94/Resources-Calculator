@@ -1,0 +1,53 @@
+<html>
+<head>
+<title>devcontainer.json</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<style type="text/css">
+.s0 { color: #bcbec4;}
+.s1 { color: #bcbec4;}
+.s2 { color: #6aab73;}
+.s3 { color: #7a7e85;}
+.s4 { color: #2aacb8;}
+</style>
+</head>
+<body bgcolor="#1e1f22">
+<table CELLSPACING=0 CELLPADDING=5 COLS=1 WIDTH="100%" BGCOLOR="#606060" >
+<tr><td><center>
+<font face="Arial, Helvetica" color="#000000">
+devcontainer.json</font>
+</center></td></tr></table>
+<pre><span class="s0">{</span>
+  <span class="s2">&quot;name&quot;</span><span class="s0">: </span><span class="s2">&quot;Python 3&quot;</span><span class="s0">,</span>
+  <span class="s3">// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile</span>
+  <span class="s2">&quot;image&quot;</span><span class="s0">: </span><span class="s2">&quot;mcr.microsoft.com/devcontainers/python:1-3.11-bullseye&quot;</span><span class="s0">,</span>
+  <span class="s2">&quot;customizations&quot;</span><span class="s0">: {</span>
+    <span class="s2">&quot;codespaces&quot;</span><span class="s0">: {</span>
+      <span class="s2">&quot;openFiles&quot;</span><span class="s0">: [</span>
+        <span class="s2">&quot;README.md&quot;</span><span class="s0">,</span>
+        <span class="s2">&quot;main.py&quot;</span>
+      <span class="s0">]</span>
+    <span class="s0">},</span>
+    <span class="s2">&quot;vscode&quot;</span><span class="s0">: {</span>
+      <span class="s2">&quot;settings&quot;</span><span class="s0">: {},</span>
+      <span class="s2">&quot;extensions&quot;</span><span class="s0">: [</span>
+        <span class="s2">&quot;ms-python.python&quot;</span><span class="s0">,</span>
+        <span class="s2">&quot;ms-python.vscode-pylance&quot;</span>
+      <span class="s0">]</span>
+    <span class="s0">}</span>
+  <span class="s0">},</span>
+  <span class="s2">&quot;updateContentCommand&quot;</span><span class="s0">: </span><span class="s2">&quot;[ -f packages.txt ] &amp;&amp; sudo apt update &amp;&amp; sudo apt upgrade -y &amp;&amp; sudo xargs apt install -y &lt;packages.txt; [ -f requirements.txt ] &amp;&amp; pip3 install --user -r requirements.txt; pip3 install --user streamlit; echo '✅ Packages installed and Requirements met'&quot;</span><span class="s0">,</span>
+  <span class="s2">&quot;postAttachCommand&quot;</span><span class="s0">: {</span>
+    <span class="s2">&quot;server&quot;</span><span class="s0">: </span><span class="s2">&quot;streamlit run main.py --server.enableCORS false --server.enableXsrfProtection false&quot;</span>
+  <span class="s0">},</span>
+  <span class="s2">&quot;portsAttributes&quot;</span><span class="s0">: {</span>
+    <span class="s2">&quot;8501&quot;</span><span class="s0">: {</span>
+      <span class="s2">&quot;label&quot;</span><span class="s0">: </span><span class="s2">&quot;Application&quot;</span><span class="s0">,</span>
+      <span class="s2">&quot;onAutoForward&quot;</span><span class="s0">: </span><span class="s2">&quot;openPreview&quot;</span>
+    <span class="s0">}</span>
+  <span class="s0">},</span>
+  <span class="s2">&quot;forwardPorts&quot;</span><span class="s0">: [</span>
+    <span class="s4">8501</span>
+  <span class="s0">]</span>
+<span class="s0">}</span></pre>
+</body>
+</html>
