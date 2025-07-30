@@ -252,8 +252,10 @@ def generate_document_from_template(
     shared_storage,
     raid_1_storage_tb,
     gateway_specs,
+    workstation_notes=None,
     diagnostic_specs=None,
-    viewing_specs=None,
+    review_specs=None,
+    clinician_specs=None,
     ris_specs=None,
     project_grade=None,
     storage_table=None,
@@ -663,9 +665,8 @@ def generate_document_from_template(
 
         # Add Gateway details as bullet points using the existing utility function
         add_bullet_points_with_bold(doc, gateway_specs, "")
-        add_bullet_points_with_bold(doc, notes['minimum_requirements'], ' Requirements & Recommendations')
     # Workstation Specifications Section
-    if diagnostic_specs is not None or viewing_specs is not None or ris_specs is not None:
+    if any(spec is not None for spec in [diagnostic_specs, ris_specs, review_specs, clinician_specs,workstation_notes]):
         doc.add_heading('Workstation Specifications', level=2)
 
         # Add descriptive text for workstation specifications
@@ -675,19 +676,28 @@ def generate_document_from_template(
             "clinical workflows. Each workstation is equipped with state-of-the-art hardware to ensure optimal performance "
             "and user satisfaction."
         )
+
         # Add Diagnostic Workstation Specifications
         if diagnostic_specs is not None:
             add_table_with_no_split(doc, diagnostic_specs, title='Diagnostic Workstation')
-
-        # Add Viewing Workstation Specifications
-        if viewing_specs is not None:
-            add_paragraph_with_bold(doc, "**Viewing Workstation Specifications**:")
-            add_table_with_no_split(doc, viewing_specs, title='Viewing Workstation')
 
         # Add RIS Workstation Specifications
         if ris_specs is not None:
             add_paragraph_with_bold(doc, "**RIS Workstation Specifications**:")
             add_table_with_no_split(doc, ris_specs, title='RIS Workstation')
+
+        # Add Review Workstation Specifications
+        if review_specs is not None:
+            add_paragraph_with_bold(doc, "**Review Workstation Specifications**:")
+            add_table_with_no_split(doc, review_specs, title='Review Workstation')
+
+        # Add Clinician Workstation Specifications
+        if clinician_specs is not None:
+            add_paragraph_with_bold(doc, "**Clinician Workstation Specifications**:")
+            add_table_with_no_split(doc, clinician_specs, title='Clinician Workstation')
+        add_bullet_points_with_bold(doc, workstation_notes, ' Workstation Requirements & Recommendations')
+
+    add_bullet_points_with_bold(doc, notes['minimum_requirements'], ' Requirements & Recommendations')
 
     # Save to a buffer and return
     buffer = BytesIO()
